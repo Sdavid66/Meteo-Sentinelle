@@ -381,22 +381,6 @@ custom_components/sentinelle_ecowitt/brand/
 └── icon.svg      (source, non utilisée par Home Assistant)
 ```
 
-Home Assistant sert ces images via une API locale
-(`/api/brands/integration/sentinelle_ecowitt/…`) et leur donne priorité
-sur celles du dépôt central. Rien à soumettre, rien à attendre : dès
-l'installation, l'icône apparaît dans **Paramètres → Appareils et
-services**.
-
-**Limitation connue de HACS.** Le tableau de bord HACS (la liste des
-dépôts avant installation) va chercher ses vignettes sur
-`data-v2.hacs.xyz`, qui ne connaît pas les icônes fournies localement
-par une intégration ([hacs/integration#5171](https://github.com/hacs/integration/issues/5171),
-[#5223](https://github.com/hacs/integration/issues/5223)). Il est donc
-normal de voir une icône manquante ou générique **dans la liste HACS**
-tant que ce point n'est pas corrigé côté HACS — l'icône s'affiche
-correctement une fois l'intégration installée et configurée, ce qui est
-ce qui compte réellement.
-
 Nécessite Home Assistant 2026.3 ou supérieur ; sur une version plus
 ancienne, l'icône ne s'affiche nulle part (repli silencieux sur le
 générique), sans que cela n'affecte le fonctionnement de l'intégration.
