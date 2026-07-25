@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="42%" cy="32%" r="78%">
+      <stop offset="0%"  stop-color="#1462b4"/>
+      <stop offset="55%" stop-color="#0d4a92"/>
+      <stop offset="100%" stop-color="#0a2f63"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#9fe3f5"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="256" cy="256" r="250" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="242" fill="none" stroke="#5bc8e8" stroke-opacity="0.55" stroke-width="7"/>
+
+  <!-- Feuille : la plante protégée -->
+  <g transform="translate(256,268)">
+    <path d="M0,116 C-104,64 -122,-52 -14,-116 C86,-58 104,58 0,116 Z"
+          fill="url(#leaf)"/>
+    <path d="M0,112 L0,-104" stroke="#0d4a92" stroke-opacity="0.42"
+          stroke-width="11" stroke-linecap="round"/>
+    <g stroke="#0d4a92" stroke-opacity="0.30" stroke-width="8" stroke-linecap="round" fill="none">
+      <path d="M0,58 L-52,20"/>  <path d="M0,58 L52,20"/>
+      <path d="M0,4  L-56,-38"/> <path d="M0,4  L56,-38"/>
+      <path d="M0,-50 L-42,-84"/><path d="M0,-50 L42,-84"/>
+    </g>
+  </g>
+
+  <!-- Flocon : la menace surveillée (gel) -->
+  <g transform="translate(150,150)" stroke="#eaf7ff" stroke-width="17" stroke-linecap="round">
+    <path d="M0,-52 L0,52"/>
+    <path d="M-45,-26 L45,26"/>
+    <path d="M-45,26 L45,-26"/>
+    <g stroke-width="13">
+      <path d="M0,-52 L-16,-36"/> <path d="M0,-52 L16,-36"/>
+      <path d="M0,52 L-16,36"/>   <path d="M0,52 L16,36"/>
+      <path d="M-45,-26 L-44,-6"/><path d="M-45,-26 L-26,-32"/>
+      <path d="M45,26 L44,6"/>    <path d="M45,26 L26,32"/>
+      <path d="M-45,26 L-26,32"/> <path d="M-45,26 L-44,6"/>
+      <path d="M45,-26 L26,-32"/> <path d="M45,-26 L44,-6"/>
+    </g>
+  </g>
+</svg>

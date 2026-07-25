@@ -1,4 +1,8 @@
-# Sentinelle Ecowitt
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Sentinelle-Ecowitt/main/images/logo.png" alt="Sentinelle Ecowitt" width="260">
+</p>
+
+<h1 align="center">Sentinelle Ecowitt</h1>
 
 Intégration Home Assistant, installable via **HACS**, qui prédit les
 risques de **gel** et de **maladies des plantes** (mildiou, oïdium...)
@@ -122,16 +126,40 @@ un avis phytosanitaire professionnel.
 
 ## Feuille de route
 
-- v0.2 : séparation jour/nuit correcte pour l'oïdium, ajout tavelure
+- **v0.2 (actuelle)** : support MeteoSwiss en prévisions et en secours
+  automatique, entité « Source des données ».
+- v0.3 : séparation jour/nuit correcte pour l'oïdium, ajout tavelure
   (pommier), historique de risque (graphique).
-- v0.3 : prévisions multi-jours affinées (agrégation de plusieurs
+- v0.4 : prévisions multi-jours affinées (agrégation de plusieurs
   sources météo), notifications intégrées, blueprint d'automatisation
   prêt à l'emploi.
-- v0.4 : profils "culture" (potager, verger, vigne...) avec seuils
+- v0.5 : profils "culture" (potager, verger, vigne...) avec seuils
   adaptés par plante.
 
 Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le détail des choix de
 conception.
+
+## Icône dans HACS et Home Assistant
+
+Les icônes officielles se trouvent dans `brands/sentinelle_ecowitt/`
+(`icon.png` 256 px, `icon@2x.png` 512 px, plus la source `icon.svg`),
+au format exigé par Home Assistant : PNG carré, fond transparent,
+détouré sans marge.
+
+Home Assistant et HACS ne lisent pas ces fichiers depuis ce dépôt :
+ils les chargent depuis le dépôt central
+[home-assistant/brands](https://github.com/home-assistant/brands).
+Pour que l'icône apparaisse dans l'interface, il faut donc l'y
+soumettre une fois :
+
+1. Forker `home-assistant/brands`.
+2. Copier `brands/sentinelle_ecowitt/` vers
+   `custom_integrations/sentinelle_ecowitt/` dans le fork.
+3. Ouvrir une pull request.
+
+Tant que cette PR n'est pas fusionnée, HACS affiche une icône
+générique — c'est normal et sans conséquence sur le fonctionnement de
+l'intégration.
 
 ## Soutenir le projet
 

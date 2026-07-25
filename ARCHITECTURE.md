@@ -133,12 +133,31 @@ documentation. C'est la pratique standard des projets HACS pour rester
 conforme aux règles du dépôt par défaut HACS (pas de monétisation
 intrusive dans le produit).
 
+### 6. Identité visuelle
+
+Deux usages distincts, deux fichiers différents :
+
+- **Bannière README** (`images/logo.png`, 640 px) — le logo complet,
+  qui illustre la chaîne mesures → moteur → alertes. Affiché en grand,
+  il est lisible et explique le projet d'un coup d'œil.
+- **Icône HACS / Home Assistant** (`brands/sentinelle_ecowitt/`) — une
+  version épurée du même logo (feuille + flocon, palette identique,
+  sans texte). Nécessaire car l'interface affiche l'icône entre 32 et
+  64 px, taille à laquelle tout texte devient illisible.
+
+La source vectorielle de l'icône est versionnée (`icon.svg`), afin de
+pouvoir la régénérer à n'importe quelle résolution sans perte.
+
+Contraintes respectées pour `home-assistant/brands` : PNG carré,
+canal alpha, détouré sans marge transparente, 256 px et 512 px.
+
 ## Ce qu'il reste à faire avant publication HACS
 
 1. Ajouter des tests unitaires automatisés pour `models/*.py` et pour
    la logique de bascule Ecowitt → MeteoSwiss (pytest, sans HA).
-2. Ajouter des captures d'écran du config flow et des entités dans le
-   README (`brands` HACS si publication au dépôt par défaut).
+2. Soumettre l'icône à `home-assistant/brands` (copier
+   `brands/sentinelle_ecowitt/` vers `custom_integrations/` du fork),
+   puis ajouter des captures d'écran du config flow au README.
 3. Tester en conditions réelles avec une station Ecowitt + une entité
    météo (MeteoSwiss ou Met.no).
 4. Vérifier le parcours de mise à jour depuis la v0.1 (le config flow
