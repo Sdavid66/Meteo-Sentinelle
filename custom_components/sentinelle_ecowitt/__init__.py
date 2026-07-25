@@ -1,9 +1,12 @@
 """Intégration Sentinelle Ecowitt."""
 from __future__ import annotations
 
+import logging
+from types import MappingProxyType
+
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import config_validation as cv
 
@@ -22,10 +25,14 @@ from .const import (
     SERVICE_LOG_TREATMENT,
     SERVICE_RESET_MILDEW_INDEX,
     SERVICE_SET_STAGE,
+    SUBENTRY_TYPE_TREE,
     TREATABLE_MODELS,
 )
 from .coordinator import SentinelleEcowittCoordinator
 from .models.treatments import DEFAULT_RAINFAST_MM, DEFAULT_RESIDUAL_DAYS
+from .tree import legacy_tree_data, strip_legacy_keys
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["sensor", "select", "switch"]
 
@@ -62,6 +69,63 @@ SET_STAGE_SCHEMA = vol.Schema(
         vol.Required(ATTR_STAGE): cv.string,
     }
 )
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Fait évoluer une entrée créée par une version antérieure.
+
+    Jusqu'à la v0.3, une entrée portait **une seule** culture, décrite
+    directement par les clés `crop` et `stage`. Depuis la v0.4, chaque
+    arbre est une sous-entrée distincte.
+
+    La migration convertit donc l'ancienne culture unique en un premier
+    arbre, afin qu'une installation existante retrouve ses capteurs au
+    lieu de repartir de zéro. Un arbre est créé même si aucune culture
+    n'était configurée : sans arbre, l'intégration ne produirait plus
+    aucune entité de risque.
+    """
+    if entry.version > 4:
+        # Entrée écrite par une version plus récente : on ne sait pas la
+        # rétrograder, et écraser ses données serait pire que d'échouer.
+        _LOGGER.error(
+            "Entrée créée par une version plus récente de Sentinelle Ecowitt "
+            "(version %s) : rétrogradation impossible",
+            entry.version,
+        )
+        return False
+
+    if entry.version == 4:
+        return True
+
+    _LOGGER.info(
+        "Migration de Sentinelle Ecowitt depuis la version %s vers la version 4",
+        entry.version,
+    )
+
+    already_has_tree = any(
+        subentry.subentry_type == SUBENTRY_TYPE_TREE
+        for subentry in entry.subentries.values()
+    )
+
+    if not already_has_tree:
+        tree_data = legacy_tree_data(dict(entry.data))
+        subentry = ConfigSubentry(
+            data=MappingProxyType(tree_data),
+            subentry_type=SUBENTRY_TYPE_TREE,
+            title=tree_data["tree_name"],
+            unique_id=None,
+        )
+        hass.config_entries.async_add_subentry(entry, subentry)
+        _LOGGER.info(
+            "Culture « %s » convertie en arbre surveillé « %s »",
+            tree_data["crop"],
+            tree_data["tree_name"],
+        )
+
+    hass.config_entries.async_update_entry(
+        entry, data=strip_legacy_keys(dict(entry.data)), version=4
+    )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

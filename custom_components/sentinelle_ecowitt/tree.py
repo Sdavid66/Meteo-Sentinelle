@@ -122,6 +122,37 @@ class Tree:
         return self.subentry_id
 
 
+def legacy_tree_data(entry_data: dict) -> dict:
+    """Convertit une configuration mono-culture (v1 à v3) en données d'arbre.
+
+    Jusqu'à la v0.3, l'entrée de configuration portait directement une
+    culture et un stade. Depuis la v0.4, chaque arbre est une sous-entrée.
+    Cette fonction fabrique les données de l'arbre correspondant, afin
+    qu'une installation existante retrouve ses capteurs après migration
+    plutôt que de repartir de zéro.
+    """
+    crop = entry_data.get(CONF_CROP) or GENERIC_CROP
+    data = {
+        CONF_TREE_NAME: crop_label(crop),
+        CONF_CROP: crop,
+        CONF_AUTO_ADVANCE: DEFAULT_AUTO_ADVANCE,
+        CONF_GDD_OFFSET: DEFAULT_GDD_OFFSET,
+    }
+    stage = entry_data.get(CONF_STAGE)
+    if stage:
+        data[CONF_STAGE] = stage
+    return data
+
+
+def strip_legacy_keys(entry_data: dict) -> dict:
+    """Retire de l'entrée les clés désormais portées par les sous-entrées."""
+    return {
+        key: value
+        for key, value in entry_data.items()
+        if key not in (CONF_CROP, CONF_STAGE)
+    }
+
+
 def crop_label(crop: str) -> str:
     entry = CROPS.get(crop)
     return entry.label if entry else "Culture"

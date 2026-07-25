@@ -31,7 +31,7 @@ def _load():
     loaded = {}
     for name in ("const", "models.hourly", "models.crops", "models.frost",
                  "models.late_blight", "models.powdery_mildew",
-                 "models.treatments", "models.phenology"):
+                 "models.treatments", "models.phenology", "tree"):
         full = f"sentinelle_ecowitt.{name}"
         path = CC / (name.replace(".", "/") + ".py")
         spec = importlib.util.spec_from_file_location(full, path)
@@ -51,6 +51,7 @@ blight = M["models.late_blight"]
 mildew = M["models.powdery_mildew"]
 treatments = M["models.treatments"]
 phenology = M["models.phenology"]
+tree_mod = M["tree"]
 
 BASE = datetime(2026, 6, 1, 0, 0)
 _checks = 0
@@ -519,5 +520,60 @@ check(const.MODEL_LATE_BLIGHT in const.CROP_DISEASE_MODELS["potato"],
 for crop_key in crops.CROPS:
     check(crop_key in const.CROP_DISEASE_MODELS,
           f"{crop_key} : modèles maladie définis")
+
+# ======================================================================
+print("\n--- migration : une culture unique devient un arbre ---")
+# ======================================================================
+
+# Cas réel qui a cassé : une entrée v3 avec culture et stade configurés.
+legacy = {
+    "temperature_entity": "sensor.ecowitt_temp",
+    "humidity_entity": "sensor.ecowitt_hum",
+    "weather_entity": "weather.meteoswiss",
+    "enabled_models": ["frost"],
+    "crop": "apple",
+    "stage": "full_bloom",
+}
+migrated = tree_mod.legacy_tree_data(legacy)
+check(migrated["crop"] == "apple", "l'espèce configurée est conservée")
+check(migrated["stage"] == "full_bloom", "le stade en cours n'est pas perdu")
+check(migrated["tree_name"] == "Pommier", "l'arbre reçoit le nom de l'espèce")
+check(migrated["auto_advance"] is True, "avancement automatique activé par défaut")
+
+# Le reste de la configuration du site est préservé, sans les clés migrées.
+stripped = tree_mod.strip_legacy_keys(legacy)
+check("crop" not in stripped and "stage" not in stripped,
+      "les clés migrées sont retirées de l'entrée")
+check(stripped["temperature_entity"] == "sensor.ecowitt_temp",
+      "les capteurs du site sont préservés")
+check(stripped["enabled_models"] == ["frost"],
+      "les modèles activés sont préservés")
+
+# Ancienne entrée sans culture (v1 / v2) : on crée quand même un arbre,
+# sinon l'intégration ne produirait plus aucune entité de risque.
+bare = tree_mod.legacy_tree_data({"temperature_entity": "sensor.t"})
+check(bare["crop"] == crops.GENERIC_CROP,
+      "sans culture configurée : repli sur la culture générique")
+check("stage" not in bare, "pas de stade inventé quand il n'y en avait pas")
+check(bare["tree_name"], "un nom d'arbre est toujours fourni")
+
+# Idempotence : migrer deux fois ne dénature pas les données.
+check(tree_mod.strip_legacy_keys(stripped) == stripped,
+      "retirer les clés déjà retirées ne change rien")
+
+# Les données produites sont acceptées par le constructeur d'arbre.
+built = tree_mod.Tree.from_subentry("abc123", migrated)
+check(built.crop == "apple" and built.stage == "full_bloom",
+      "l'arbre reconstruit depuis la migration est cohérent")
+check(built.display_name == "Pommier", "nom affiché sans doublon d'espèce")
+check(const.MODEL_FROST in built.models, "le modèle de gel reste actif")
+
+# Un nom personnalisé se combine avec l'espèce sans la répéter.
+custom = tree_mod.Tree.from_subentry("x", {"crop": "apple", "tree_name": "Golden"})
+check(custom.display_name == "Pommier Golden",
+      "nom personnalisé préfixé par l'espèce")
+already = tree_mod.Tree.from_subentry("y", {"crop": "apple", "tree_name": "Pommier Golden"})
+check(already.display_name == "Pommier Golden",
+      "espèce non répétée si le nom la contient déjà")
 
 print(f"\n=== {_checks} vérifications passées ===")

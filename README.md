@@ -11,7 +11,7 @@ Assistant, combinés aux prévisions météo.
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20the%20project-orange?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/sdavid66)
 ![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)
-![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.4.1-blue.svg)
 
 ## Pourquoi
 
@@ -334,6 +334,23 @@ en deçà d'un outil professionnel sur trois points :
 - Indice Gubler-Thomas — [UC IPM, Gubler *et al.* 1999](https://uspest.org/npdn/riskdoc.html)
 - Températures critiques T10/T90 — [WSU, publié par USU Extension IPM-012-11](https://extension.usu.edu/productionhort/files/CriticalTemperaturesFrostDamageFruitTrees.pdf)
 - Degrés-jours et phénologie du pommier — [MSU Enviroweather](https://enviroweather.msu.edu/weathermodels/growingdegreedays)
+
+## Mise à jour depuis une version antérieure
+
+Les installations créées avec une version 0.1 à 0.3 sont migrées
+automatiquement au premier démarrage : la culture unique que portait
+l'intégration devient votre premier arbre surveillé, avec son stade en
+cours. Vos capteurs, votre entité météo et vos modèles activés sont
+conservés.
+
+Si aucune culture n'était configurée, un arbre « générique » est créé
+malgré tout — sans arbre, l'intégration ne produirait plus aucune entité
+de risque.
+
+Le message `We found a custom integration sentinelle_ecowitt which has
+not been tested by Home Assistant` dans le journal est **normal** :
+Home Assistant l'émet pour toute intégration personnalisée, quelle
+qu'elle soit. Il n'indique aucun problème.
 
 ## Feuille de route
 

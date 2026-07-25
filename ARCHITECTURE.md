@@ -273,6 +273,34 @@ est persisté dans le `Store`, indexé par `subentry_id`. Changer l'espèce
 d'un arbre réinitialise son indice oïdium : le cumul saisonnier d'une
 espèce n'a pas de sens pour une autre.
 
+### 5 quater. Migration des entrées existantes
+
+Une leçon apprise à la dure : `ConfigFlow.VERSION` a été incrémentée de
+1 à 4 au fil des versions **sans** fournir `async_migrate_entry`. Home
+Assistant refuse alors de charger l'entrée et journalise
+« Migration handler not found ». Toute installation antérieure était donc
+cassée par la mise à jour.
+
+Le handler couvre l'ensemble du chemin 1 → 4, la seule transformation
+réellement nécessaire étant 3 → 4 : la culture unique portée par l'entrée
+(`crop`, `stage`) devient une sous-entrée arbre. Les versions 1 et 2 ne
+possédaient tout simplement pas ces clés, et le repli sur la culture
+générique les couvre sans traitement particulier.
+
+Deux décisions :
+
+- **un arbre est créé même sans culture configurée.** Sans arbre,
+  l'intégration ne produirait plus aucune entité de risque : l'utilisateur
+  verrait ses capteurs disparaître sans comprendre pourquoi ;
+- **on refuse de rétrograder.** Si `entry.version > 4`, le handler renvoie
+  `False` plutôt que d'écraser des données écrites par une version plus
+  récente.
+
+La logique de transformation est isolée dans `tree.legacy_tree_data` et
+`tree.strip_legacy_keys`, fonctions pures donc testables sans Home
+Assistant — c'est ce qui permet de couvrir la migration dans la suite de
+tests plutôt que de la découvrir en production.
+
 ### 6. Identité visuelle
 
 Deux usages distincts, deux mécanismes différents :
@@ -319,7 +347,7 @@ exigences que `home-assistant/brands`, seul l'emplacement change.
 
 ## Ce qu'il reste à faire avant publication HACS
 
-1. Intégrer `tests/test_models.py` (124 vérifications, exécutable sans
+1. Intégrer `tests/test_models.py` (140 vérifications, exécutable sans
    Home Assistant) à un workflow GitHub Actions.
 2. Ajouter des captures d'écran du config flow et des entités au README.
 3. Tester en conditions réelles avec une station Ecowitt + une entité
