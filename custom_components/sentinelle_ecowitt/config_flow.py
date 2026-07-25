@@ -1,4 +1,11 @@
-"""Config flow pour Sentinelle Ecowitt."""
+"""Config flow pour Sentinelle Ecowitt.
+
+L'entrée principale porte ce qui est **commun au site** : capteurs,
+prévisions, sources de secours, alertes. Chaque **arbre surveillé** est
+une sous-entrée, ajoutée depuis le bouton « Ajouter un arbre » de la
+page de l'intégration. Les capteurs et la météo restent donc partagés
+— une seule requête de prévisions pour tout le verger.
+"""
 from __future__ import annotations
 
 import voluptuous as vol
@@ -9,26 +16,34 @@ from homeassistant.helpers import selector
 
 from .const import (
     AVAILABLE_MODELS,
+    CONF_AUTO_ADVANCE,
     CONF_CROP,
     CONF_ENABLED_MODELS,
     CONF_FALLBACK_HUMIDITY_ENTITY,
     CONF_FALLBACK_RAIN_ENTITY,
     CONF_FALLBACK_TEMP_ENTITY,
     CONF_FALLBACK_WIND_ENTITY,
+    CONF_GDD_OFFSET,
     CONF_HUMIDITY_ENTITY,
     CONF_LEAF_WETNESS_ENTITY,
+    CONF_NOTIFICATIONS,
     CONF_RAIN_ENTITY,
     CONF_RAIN_PENALTY,
     CONF_STAGE,
     CONF_TEMP_ENTITY,
+    CONF_TREE_NAME,
     CONF_WEATHER_ENTITY,
     CONF_WIND_ENTITY,
+    DEFAULT_AUTO_ADVANCE,
     DEFAULT_ENABLED_MODELS,
+    DEFAULT_GDD_OFFSET,
     DEFAULT_NAME,
+    DEFAULT_NOTIFICATIONS,
     DOMAIN,
     MODEL_FROST,
     MODEL_LATE_BLIGHT,
     MODEL_POWDERY_MILDEW,
+    SUBENTRY_TYPE_TREE,
 )
 from .models.crops import GENERIC_CROP, crop_options, stage_options
 
@@ -50,8 +65,8 @@ def _optional_entity(key: str, defaults: dict, **selector_kwargs):
     )
 
 
-def _ecowitt_schema(defaults: dict | None = None) -> dict:
-    """Capteurs de la station personnelle (Ecowitt) + prévisions."""
+def _site_schema(defaults: dict | None = None) -> dict:
+    """Capteurs du site + prévisions + modèles + alertes."""
     defaults = defaults or {}
     schema: dict = {
         vol.Required(
@@ -92,43 +107,16 @@ def _ecowitt_schema(defaults: dict | None = None) -> dict:
             multiple=True,
         )
     )
-    return schema
-
-
-def _crop_schema(defaults: dict | None = None) -> dict:
-    """Culture surveillée : détermine les seuils de gel appliqués."""
-    defaults = defaults or {}
-    crop = defaults.get(CONF_CROP, GENERIC_CROP)
-
-    schema: dict = {
-        vol.Required(CONF_CROP, default=crop): selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=[
-                    selector.SelectOptionDict(value=key, label=label)
-                    for key, label in crop_options()
-                ],
-                mode=selector.SelectSelectorMode.DROPDOWN,
-            )
-        )
-    }
-
-    stages = stage_options(crop)
-    if stages:
-        default_stage = defaults.get(CONF_STAGE) or stages[0][0]
-        schema[
-            vol.Optional(CONF_STAGE, default=default_stage)
-        ] = selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=[
-                    selector.SelectOptionDict(value=key, label=label)
-                    for key, label in stages
-                ],
-                mode=selector.SelectSelectorMode.DROPDOWN,
-            )
-        )
 
     schema[
         vol.Required(CONF_RAIN_PENALTY, default=defaults.get(CONF_RAIN_PENALTY, True))
+    ] = selector.BooleanSelector()
+
+    schema[
+        vol.Required(
+            CONF_NOTIFICATIONS,
+            default=defaults.get(CONF_NOTIFICATIONS, DEFAULT_NOTIFICATIONS),
+        )
     ] = selector.BooleanSelector()
 
     return schema
@@ -149,10 +137,64 @@ def _fallback_schema(defaults: dict | None = None) -> dict:
     return schema
 
 
-class SentinelleEcowittConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Flux en trois étapes : capteurs, culture, sources de secours."""
+def _tree_schema(crop: str | None = None, defaults: dict | None = None) -> vol.Schema:
+    """Formulaire d'un arbre. Les stades dépendent de l'espèce choisie."""
+    defaults = defaults or {}
+    crop = crop or defaults.get(CONF_CROP) or GENERIC_CROP
 
-    VERSION = 3
+    schema: dict = {
+        vol.Required(
+            CONF_TREE_NAME, default=defaults.get(CONF_TREE_NAME, "")
+        ): selector.TextSelector(),
+        vol.Required(CONF_CROP, default=crop): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    selector.SelectOptionDict(value=key, label=label)
+                    for key, label in crop_options()
+                ],
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        ),
+    }
+
+    stages = stage_options(crop)
+    if stages:
+        default_stage = defaults.get(CONF_STAGE) or stages[0][0]
+        schema[vol.Required(CONF_STAGE, default=default_stage)] = (
+            selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=key, label=label)
+                        for key, label in stages
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+        )
+        schema[
+            vol.Required(
+                CONF_AUTO_ADVANCE,
+                default=defaults.get(CONF_AUTO_ADVANCE, DEFAULT_AUTO_ADVANCE),
+            )
+        ] = selector.BooleanSelector()
+        schema[
+            vol.Optional(
+                CONF_GDD_OFFSET,
+                default=defaults.get(CONF_GDD_OFFSET, DEFAULT_GDD_OFFSET),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=-300, max=300, step=10, mode=selector.NumberSelectorMode.BOX
+            )
+        )
+
+    return vol.Schema(schema)
+
+
+class SentinelleEcowittConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Configuration du site, puis ajout des arbres en sous-entrées."""
+
+    VERSION = 4
 
     def __init__(self) -> None:
         self._data: dict = {}
@@ -163,30 +205,12 @@ class SentinelleEcowittConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(f"{DOMAIN}_{name}")
             self._abort_if_unique_id_configured()
             self._data = {"name": name, **user_input}
-            return await self.async_step_crop()
-
-        schema = vol.Schema(
-            {vol.Required("name", default=DEFAULT_NAME): str, **_ecowitt_schema()}
-        )
-        return self.async_show_form(step_id="user", data_schema=schema)
-
-    async def async_step_crop(self, user_input: dict | None = None):
-        """Culture et stade phénologique de départ."""
-        if user_input is not None:
-            self._data.update(user_input)
-            # Le choix de la culture change la liste des stades : si
-            # l'utilisateur en a sélectionné une sans que le formulaire
-            # ait pu proposer les stades correspondants, on redemande.
-            crop = user_input.get(CONF_CROP, GENERIC_CROP)
-            if stage_options(crop) and CONF_STAGE not in user_input:
-                return self.async_show_form(
-                    step_id="crop", data_schema=vol.Schema(_crop_schema(self._data))
-                )
             return await self.async_step_fallback()
 
-        return self.async_show_form(
-            step_id="crop", data_schema=vol.Schema(_crop_schema())
+        schema = vol.Schema(
+            {vol.Required("name", default=DEFAULT_NAME): str, **_site_schema()}
         )
+        return self.async_show_form(step_id="user", data_schema=schema)
 
     async def async_step_fallback(self, user_input: dict | None = None):
         """Étape facultative : sources de secours (MeteoSwiss ou autre)."""
@@ -200,14 +224,92 @@ class SentinelleEcowittConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="fallback", data_schema=vol.Schema(_fallback_schema())
         )
 
+    @classmethod
+    @callback
+    def async_get_supported_subentry_types(
+        cls, config_entry: config_entries.ConfigEntry
+    ) -> dict[str, type[config_entries.ConfigSubentryFlow]]:
+        """Expose le bouton « Ajouter un arbre » sur la page d'intégration."""
+        return {SUBENTRY_TYPE_TREE: TreeSubentryFlowHandler}
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
         return SentinelleEcowittOptionsFlow(config_entry)
 
 
+class TreeSubentryFlowHandler(config_entries.ConfigSubentryFlow):
+    """Ajout / modification d'un arbre surveillé.
+
+    Le formulaire est présenté deux fois lorsque l'espèce change : la
+    liste des stades dépend de l'espèce, et Home Assistant ne sait pas
+    reconstruire dynamiquement un schéma en cours de saisie.
+    """
+
+    def __init__(self) -> None:
+        self._crop: str | None = None
+
+    async def async_step_user(self, user_input: dict | None = None):
+        return await self.async_step_tree(user_input)
+
+    async def async_step_tree(self, user_input: dict | None = None):
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            crop = user_input.get(CONF_CROP, GENERIC_CROP)
+            stages = stage_options(crop)
+
+            # L'espèce a changé depuis l'affichage : on réaffiche le
+            # formulaire avec les stades correspondants.
+            if stages and CONF_STAGE not in user_input:
+                self._crop = crop
+                return self.async_show_form(
+                    step_id="tree",
+                    data_schema=_tree_schema(crop, user_input),
+                    errors=errors,
+                )
+
+            name = (user_input.get(CONF_TREE_NAME) or "").strip()
+            if not name:
+                from .models.crops import CROPS
+
+                entry = CROPS.get(crop)
+                name = entry.label if entry else "Culture"
+                user_input[CONF_TREE_NAME] = name
+
+            return self.async_create_entry(title=name, data=user_input)
+
+        return self.async_show_form(
+            step_id="tree", data_schema=_tree_schema(self._crop), errors=errors
+        )
+
+    async def async_step_reconfigure(self, user_input: dict | None = None):
+        """Modification d'un arbre existant."""
+        subentry = self._get_reconfigure_subentry()
+
+        if user_input is not None:
+            crop = user_input.get(CONF_CROP, GENERIC_CROP)
+            stages = stage_options(crop)
+            if stages and CONF_STAGE not in user_input:
+                return self.async_show_form(
+                    step_id="reconfigure",
+                    data_schema=_tree_schema(crop, user_input),
+                )
+            return self.async_update_and_abort(
+                self._get_entry(),
+                subentry,
+                data=user_input,
+                title=user_input.get(CONF_TREE_NAME) or subentry.title,
+            )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_tree_schema(subentry.data.get(CONF_CROP), dict(subentry.data)),
+        )
+
+
 class SentinelleEcowittOptionsFlow(config_entries.OptionsFlow):
-    """Permet de tout revoir après coup."""
+    """Réglages communs au site (les arbres se gèrent en sous-entrées)."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self.config_entry = config_entry
@@ -218,10 +320,6 @@ class SentinelleEcowittOptionsFlow(config_entries.OptionsFlow):
 
         current = {**self.config_entry.data, **self.config_entry.options}
         schema = vol.Schema(
-            {
-                **_ecowitt_schema(current),
-                **_crop_schema(current),
-                **_fallback_schema(current),
-            }
+            {**_site_schema(current), **_fallback_schema(current)}
         )
         return self.async_show_form(step_id="init", data_schema=schema)

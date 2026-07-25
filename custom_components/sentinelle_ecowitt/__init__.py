@@ -4,28 +4,39 @@ from __future__ import annotations
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import config_validation as cv
 
+from .alerting import process_risk_changes, process_stage_advances
 from .const import (
     ATTR_PRODUCT,
     ATTR_RAINFAST_MM,
     ATTR_RESIDUAL_DAYS,
+    ATTR_STAGE,
     ATTR_TARGET,
+    ATTR_TREE,
+    CONF_NOTIFICATIONS,
+    DEFAULT_NOTIFICATIONS,
     DOMAIN,
     SERVICE_CLEAR_TREATMENT,
     SERVICE_LOG_TREATMENT,
     SERVICE_RESET_MILDEW_INDEX,
+    SERVICE_SET_STAGE,
     TREATABLE_MODELS,
 )
 from .coordinator import SentinelleEcowittCoordinator
 from .models.treatments import DEFAULT_RAINFAST_MM, DEFAULT_RESIDUAL_DAYS
 
-PLATFORMS = ["sensor", "select"]
+PLATFORMS = ["sensor", "select", "switch"]
+
+#: `tree` accepte un nom d'arbre ou un identifiant de sous-entrée ;
+#: omis, l'action s'applique à tous les arbres concernés.
+_TREE_SELECTOR = vol.Any(cv.string, [cv.string])
 
 LOG_TREATMENT_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_TARGET): vol.In(TREATABLE_MODELS),
+        vol.Optional(ATTR_TREE): _TREE_SELECTOR,
         vol.Optional(ATTR_PRODUCT, default=""): cv.string,
         vol.Optional(ATTR_RESIDUAL_DAYS, default=DEFAULT_RESIDUAL_DAYS): vol.All(
             vol.Coerce(float), vol.Range(min=0, max=90)
@@ -37,7 +48,19 @@ LOG_TREATMENT_SCHEMA = vol.Schema(
 )
 
 CLEAR_TREATMENT_SCHEMA = vol.Schema(
-    {vol.Optional(ATTR_TARGET): vol.In(TREATABLE_MODELS)}
+    {
+        vol.Optional(ATTR_TARGET): vol.In(TREATABLE_MODELS),
+        vol.Optional(ATTR_TREE): _TREE_SELECTOR,
+    }
+)
+
+RESET_MILDEW_SCHEMA = vol.Schema({vol.Optional(ATTR_TREE): _TREE_SELECTOR})
+
+SET_STAGE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_TREE): _TREE_SELECTOR,
+        vol.Required(ATTR_STAGE): cv.string,
+    }
 )
 
 
@@ -52,6 +75,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # L'alerting s'accroche après le premier rafraîchissement, pour ne pas
+    # notifier en rafale au démarrage sur des niveaux déjà connus.
+    _async_setup_alerting(hass, entry, coordinator)
     return True
 
 
@@ -64,6 +91,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_LOG_TREATMENT,
                 SERVICE_CLEAR_TREATMENT,
                 SERVICE_RESET_MILDEW_INDEX,
+                SERVICE_SET_STAGE,
             ):
                 hass.services.async_remove(DOMAIN, service)
     return unloaded
@@ -73,8 +101,55 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     await hass.config_entries.async_reload(entry.entry_id)
 
 
+def _async_setup_alerting(
+    hass: HomeAssistant, entry: ConfigEntry, coordinator
+) -> None:
+    """Branche l'émission d'alertes sur chaque mise à jour du coordinator."""
+    # Amorce les niveaux connus sans notifier : au démarrage, un risque
+    # déjà en cours n'est pas une nouveauté.
+    for subentry_id, results in (coordinator.data or {}).items():
+        tree = coordinator.tree(subentry_id)
+        if tree is None:
+            continue
+        for model, result in results.items():
+            level = getattr(result, "level", None)
+            if level is not None:
+                tree.last_levels.setdefault(model, level)
+    coordinator.pending_advances = []
+
+    @callback
+    def _handle_update() -> None:
+        data = {**entry.data, **entry.options}
+        enabled = data.get(CONF_NOTIFICATIONS, DEFAULT_NOTIFICATIONS)
+        process_stage_advances(hass, coordinator, enabled)
+        process_risk_changes(hass, coordinator, enabled)
+
+    entry.async_on_unload(coordinator.async_add_listener(_handle_update))
+
+
 def _coordinators(hass: HomeAssistant) -> list[SentinelleEcowittCoordinator]:
     return list(hass.data.get(DOMAIN, {}).values())
+
+
+def _resolve_trees(coordinator, requested) -> list[str] | None:
+    """Traduit un nom ou un identifiant d'arbre en identifiants de sous-entrée.
+
+    Renvoie None si rien n'est demandé (= tous les arbres).
+    """
+    if requested is None:
+        return None
+    names = [requested] if isinstance(requested, str) else list(requested)
+    wanted = {name.strip().casefold() for name in names if name}
+    matched: list[str] = []
+    for subentry_id, tree in coordinator.trees.items():
+        candidates = {
+            subentry_id.casefold(),
+            tree.name.casefold(),
+            tree.display_name.casefold(),
+        }
+        if candidates & wanted:
+            matched.append(subentry_id)
+    return matched
 
 
 def _async_register_services(hass: HomeAssistant) -> None:
@@ -89,15 +164,27 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 product=call.data.get(ATTR_PRODUCT, ""),
                 residual_days=call.data.get(ATTR_RESIDUAL_DAYS, DEFAULT_RESIDUAL_DAYS),
                 rainfast_mm=call.data.get(ATTR_RAINFAST_MM, DEFAULT_RAINFAST_MM),
+                subentry_ids=_resolve_trees(coordinator, call.data.get(ATTR_TREE)),
             )
 
     async def _clear_treatment(call: ServiceCall) -> None:
         for coordinator in _coordinators(hass):
-            await coordinator.async_clear_treatment(call.data.get(ATTR_TARGET))
+            await coordinator.async_clear_treatment(
+                target=call.data.get(ATTR_TARGET),
+                subentry_ids=_resolve_trees(coordinator, call.data.get(ATTR_TREE)),
+            )
 
     async def _reset_mildew(call: ServiceCall) -> None:
         for coordinator in _coordinators(hass):
-            await coordinator.async_reset_mildew_index()
+            await coordinator.async_reset_mildew_index(
+                subentry_ids=_resolve_trees(coordinator, call.data.get(ATTR_TREE))
+            )
+
+    async def _set_stage(call: ServiceCall) -> None:
+        stage = call.data[ATTR_STAGE]
+        for coordinator in _coordinators(hass):
+            for subentry_id in _resolve_trees(coordinator, call.data[ATTR_TREE]) or []:
+                await coordinator.async_set_stage(subentry_id, stage)
 
     hass.services.async_register(
         DOMAIN, SERVICE_LOG_TREATMENT, _log_treatment, schema=LOG_TREATMENT_SCHEMA
@@ -105,4 +192,9 @@ def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_CLEAR_TREATMENT, _clear_treatment, schema=CLEAR_TREATMENT_SCHEMA
     )
-    hass.services.async_register(DOMAIN, SERVICE_RESET_MILDEW_INDEX, _reset_mildew)
+    hass.services.async_register(
+        DOMAIN, SERVICE_RESET_MILDEW_INDEX, _reset_mildew, schema=RESET_MILDEW_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_STAGE, _set_stage, schema=SET_STAGE_SCHEMA
+    )

@@ -200,6 +200,79 @@ inacceptable. Conséquence assumée : une longue indisponibilité de Home
 Assistant sous-estime le lessivage, et le code refuse d'extrapoler
 au-delà de 6 h à partir d'une intensité instantanée.
 
+### 5 ter. Multi-arbres, phénologie et alerting (v0.4)
+
+**Un arbre = une sous-entrée = un appareil.** La v0.3 ne suivait qu'une
+culture par entrée de configuration. Trois options existaient pour en
+suivre plusieurs : dupliquer l'intégration (lourd, et autant de requêtes
+météo), un service YAML (pas d'interface), ou les **sous-entrées**
+(`ConfigSubentryFlow`). La dernière a été retenue : elle donne un bouton
+« Ajouter un arbre » natif, un appareil Home Assistant par arbre, et
+laisse les capteurs et les prévisions **partagés au niveau de l'entrée
+principale** — une seule requête `weather.get_forecasts` et une seule
+lecture du recorder alimentent tout le verger.
+
+**Lisibilité des stades.** Le problème est réel : dix entités nommées
+« Stade phénologique » seraient indiscernables. Trois réponses
+superposées, du plus structurel au plus cosmétique :
+
+1. l'entité appartient à l'appareil de l'arbre — le contexte est porté
+   par le registre, pas par une convention de nommage ;
+2. les options du `select` sont préfixées par l'espèce (« Pommier —
+   Pleine floraison »), ce qui préserve le sens hors contexte (cartes,
+   historique, journal) ;
+3. les attributs `tree`, `crop_label`, `stage_label` restent
+   disponibles pour les modèles Jinja.
+
+**Modèles pertinents par espèce.** `CROP_DISEASE_MODELS` restreint les
+maladies évaluées à celles qui concernent l'espèce. Appliquer le mildiou
+de la pomme de terre à un pommier produirait une alerte dénuée de sens
+agronomique — pire qu'une absence d'alerte, car elle érode la confiance.
+Le risque météo mildiou reste calculé une fois pour le site (la météo est
+la même partout), seule la protection est individuelle.
+
+**Phénologie par degrés-jours.** Le développement printanier suit
+l'accumulation thermique, pas le calendrier. On cumule des GDD (base
+5,6 °C, moyenne journalière, depuis le 1er janvier) et on les compare à
+des seuils par espèce et par stade.
+
+Trois propriétés délibérées :
+
+- **idempotence** — `accumulate` n'intègre que les journées complètes non
+  encore comptées, condition nécessaire puisqu'il tourne toutes les
+  15 minutes ;
+- **monotonie** — `propose_advance` ne fait jamais reculer un stade. Un
+  redoux ne peut pas « défaire » une floraison constatée ;
+- **primauté de l'observation** — une correction manuelle devient la
+  nouvelle référence et n'est jamais écrasée, car l'utilisateur qui
+  regarde son arbre en sait plus que le modèle.
+
+Le point faible est assumé et documenté : ces seuils sont **calibrés
+régionalement** (données nord-américaines). D'où le `gdd_offset` par
+arbre, qui permet de recaler la série sur les observations locales, et
+l'interrupteur d'avancement automatique qui permet de tout couper.
+
+**Alerting : événements d'abord.** Deux couches, dans cet ordre de
+dépendance :
+
+- les **événements** (`sentinelle_ecowitt_risk_changed`,
+  `sentinelle_ecowitt_stage_advanced`) sont le mécanisme primitif. Ils ne
+  présument rien du canal et servent de socle au blueprint fourni ;
+- les **notifications persistantes** sont construites par-dessus, actives
+  par défaut pour que le plugin soit utile sans configuration.
+
+Deux règles évitent la fatigue d'alerte, qui est le vrai risque d'un
+outil de ce type : on ne notifie qu'au **changement** de niveau (un
+rappel toutes les 15 minutes apprendrait à ignorer le plugin) et
+uniquement à l'**aggravation** (`escalated`). Les niveaux connus sont
+amorcés au démarrage sans notification, pour ne pas déclencher une rafale
+au redémarrage de Home Assistant sur des risques déjà en cours.
+
+L'état par arbre (stade, indice oïdium, derniers niveaux, traitements)
+est persisté dans le `Store`, indexé par `subentry_id`. Changer l'espèce
+d'un arbre réinitialise son indice oïdium : le cumul saisonnier d'une
+espèce n'a pas de sens pour une autre.
+
 ### 6. Identité visuelle
 
 Deux usages distincts, deux mécanismes différents :
@@ -246,7 +319,7 @@ exigences que `home-assistant/brands`, seul l'emplacement change.
 
 ## Ce qu'il reste à faire avant publication HACS
 
-1. Intégrer `tests/test_models.py` (80 vérifications, exécutable sans
+1. Intégrer `tests/test_models.py` (124 vérifications, exécutable sans
    Home Assistant) à un workflow GitHub Actions.
 2. Ajouter des captures d'écran du config flow et des entités au README.
 3. Tester en conditions réelles avec une station Ecowitt + une entité
@@ -265,10 +338,12 @@ exigences que `home-assistant/brands`, seul l'emplacement change.
 - **v0.3** (actuelle) — socle horaire, critères de Hutton, indice
   Gubler-Thomas, seuils de gel T10/T90 par stade, température de
   surface, suivi des traitements.
-- **v0.4** — tavelure du pommier (table de Mills inversée en
-  degrés-heures), cohortes d'infection avec latence pour le mildiou,
-  historique de risque graphable.
-- **v0.5** — agrégation de plusieurs sources météo, notifications
-  formatées, blueprint d'automatisation.
-- **v0.6** — avancement automatique du stade phénologique par cumul de
-  degrés-jours, sensibilité variétale.
+- **v0.4** (actuelle) — plusieurs arbres en sous-entrées, avancement
+  phénologique par degrés-jours, alerting par événements, notifications
+  et blueprint.
+- **v0.5** — tavelure du pommier (table de Mills inversée en
+  degrés-heures), cohortes d'infection avec latence pour le mildiou.
+- **v0.6** — sensibilité variétale, agrégation de plusieurs sources
+  météo.
+- **v0.7** — recalage automatique du `gdd_offset` par apprentissage sur
+  les corrections manuelles de l'utilisateur.

@@ -31,7 +31,7 @@ def _load():
     loaded = {}
     for name in ("const", "models.hourly", "models.crops", "models.frost",
                  "models.late_blight", "models.powdery_mildew",
-                 "models.treatments"):
+                 "models.treatments", "models.phenology"):
         full = f"sentinelle_ecowitt.{name}"
         path = CC / (name.replace(".", "/") + ".py")
         spec = importlib.util.spec_from_file_location(full, path)
@@ -50,6 +50,7 @@ frost = M["models.frost"]
 blight = M["models.late_blight"]
 mildew = M["models.powdery_mildew"]
 treatments = M["models.treatments"]
+phenology = M["models.phenology"]
 
 BASE = datetime(2026, 6, 1, 0, 0)
 _checks = 0
@@ -416,5 +417,107 @@ check(restored is not None and restored.applied_at == t.applied_at,
       "sérialisation/désérialisation fidèle")
 check(treatments.Treatment.from_dict({"bogus": 1}) is None,
       "données corrompues : rejet propre sans exception")
+
+# ======================================================================
+print("\n--- phénologie : degrés-jours et avancement de stade ---")
+# ======================================================================
+
+from datetime import date as _date
+
+# Formule des degrés-jours (base 5,6 °C)
+check(abs(phenology.daily_gdd(5.0, 15.0) - (10.0 - 5.6)) < 1e-9,
+      "GDD = moyenne - base (10 - 5,6 = 4,4)")
+check(phenology.daily_gdd(-5.0, 2.0) == 0.0,
+      "journée froide : GDD nul, jamais négatif")
+check(phenology.daily_gdd(None, 12.0) == 0.0,
+      "donnée manquante : GDD nul plutôt qu'erreur")
+
+# Cumul idempotent
+state = phenology.GddState(season_year=2026)
+days = [(_date(2026, 3, d), 5.0, 15.0) for d in range(1, 11)]
+state = phenology.accumulate(state, days)
+check(abs(state.total - 44.0) < 1e-6, f"10 jours à 4,4 GDD = 44 (obtenu {state.total})")
+again = phenology.accumulate(state, days)
+check(abs(again.total - state.total) < 1e-9,
+      "journées déjà comptées non recomptées (cumul idempotent)")
+
+# Nouvelle saison : remise à zéro au changement d'année
+next_season = phenology.accumulate(state, [(_date(2027, 1, 5), 5.0, 15.0)])
+check(next_season.season_year == 2027 and abs(next_season.total - 4.4) < 1e-6,
+      "changement d'année : le cumul repart de zéro")
+
+# Ordre phénologique respecté
+stages = phenology.ordered_stages("apple")
+check(stages[0] == "silver_tip" and stages[-1] == "full_bloom",
+      "stades pommier ordonnés de pointe argentée à pleine floraison")
+check(all(x in crops.CROPS["apple"].stages for x in stages),
+      "tous les stades GDD existent dans la table de gel WSU")
+
+# Cohérence croisée : chaque espèce a les mêmes stades des deux côtés
+for crop_key, table in phenology.STAGE_GDD.items():
+    if crop_key in crops.CROPS:
+        missing = set(table) - set(crops.CROPS[crop_key].stages)
+        check(not missing,
+              f"{crop_key} : stades GDD tous présents dans la table de gel")
+
+# Stade attendu selon le cumul
+check(phenology.stage_for_gdd("apple", 50) is None,
+      "cumul insuffisant : aucun stade atteint")
+check(phenology.stage_for_gdd("apple", 300) == "tight_cluster",
+      "300 °C·j -> bouquet serré")
+check(phenology.stage_for_gdd("apple", 5000) == "full_bloom",
+      "cumul très élevé : dernier stade, pas de débordement")
+
+# Décalage régional
+# 300 + 100 = 400 -> full_pink (seuil 370), pas first_pink (330)
+check(phenology.stage_for_gdd("apple", 300, offset=100) == "full_pink",
+      "décalage positif : verger en avance")
+check(phenology.stage_for_gdd("apple", 300, offset=-100) == "half_inch_green",
+      "décalage négatif : verger en retard")
+
+# Avancement monotone : jamais de retour en arrière
+check(phenology.propose_advance("apple", "green_tip", 300) == "tight_cluster",
+      "avancement proposé quand le seuil est franchi")
+check(phenology.propose_advance("apple", "full_bloom", 300) is None,
+      "pas de recul : un stade acquis n'est jamais défait")
+check(phenology.propose_advance("apple", "tight_cluster", 300) is None,
+      "aucun changement si le stade est déjà le bon")
+check(phenology.propose_advance("apple", None, 300) == "tight_cluster",
+      "stade initial déduit du cumul si non renseigné")
+check(phenology.propose_advance("generic", "x", 300) is None,
+      "espèce sans table GDD : aucun avancement")
+
+# Une correction manuelle sert de nouvelle référence
+check(phenology.propose_advance("apple", "first_pink", 300) is None,
+      "correction manuelle en avance respectée, pas ramenée en arrière")
+
+# Seuil suivant
+nxt = phenology.next_stage_threshold("apple", "green_tip")
+check(nxt is not None and nxt[0] == "half_inch_green",
+      "stade suivant correctement identifié")
+check(phenology.next_stage_threshold("apple", "full_bloom") is None,
+      "dernier stade : pas de suivant")
+
+# Jours avant récolte
+d2h = phenology.days_to_harvest("apple", _date(2026, 5, 1), _date(2026, 6, 1))
+check(d2h == 145 - 31, f"jours avant récolte décomptés (obtenu {d2h})")
+check(phenology.days_to_harvest("apple", None, _date(2026, 6, 1)) is None,
+      "sans date de floraison : pas d'estimation")
+check(phenology.days_to_harvest("apple", _date(2025, 1, 1), _date(2026, 6, 1)) == 0,
+      "récolte dépassée : borné à 0, jamais négatif")
+
+# ======================================================================
+print("\n--- multi-arbres : modèles pertinents par espèce ---")
+# ======================================================================
+
+check(const.MODEL_LATE_BLIGHT not in const.CROP_DISEASE_MODELS["apple"],
+      "le mildiou de la pomme de terre ne s'applique pas au pommier")
+check(const.MODEL_POWDERY_MILDEW in const.CROP_DISEASE_MODELS["apple"],
+      "l'oïdium s'applique au pommier")
+check(const.MODEL_LATE_BLIGHT in const.CROP_DISEASE_MODELS["potato"],
+      "le mildiou s'applique à la pomme de terre")
+for crop_key in crops.CROPS:
+    check(crop_key in const.CROP_DISEASE_MODELS,
+          f"{crop_key} : modèles maladie définis")
 
 print(f"\n=== {_checks} vérifications passées ===")

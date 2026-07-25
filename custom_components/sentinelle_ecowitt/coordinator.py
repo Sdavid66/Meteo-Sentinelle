@@ -1,19 +1,17 @@
 """Coordinator : collecte des données et exécution des modèles.
 
-Trois responsabilités :
+Le site est partagé (capteurs, prévisions, degrés-jours), les **arbres**
+sont individuels : chacun a son stade phénologique, donc ses propres
+seuils de gel, ses propres modèles maladie selon l'espèce, son propre
+indice oïdium et ses propres traitements.
 
-1. résoudre chaque mesure avec bascule Ecowitt → station de secours ;
-2. construire une **série horaire** à partir du recorder, socle exigé
-   par les modèles publiés (Smith, Hutton, Gubler-Thomas) ;
-3. porter l'**état persistant** que ces modèles réclament : l'indice
-   Gubler-Thomas est cumulatif sur la saison et ne peut pas être
-   recalculé depuis une fenêtre glissante, et les traitements déclarés
-   doivent survivre à un redémarrage.
+Une seule requête de prévisions et une seule lecture d'historique
+alimentent tous les arbres.
 """
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from homeassistant.components.recorder import get_instance, history
 from homeassistant.core import HomeAssistant, State
@@ -22,11 +20,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_CROP,
     CONF_ENABLED_MODELS,
     CONF_LEAF_WETNESS_ENTITY,
     CONF_RAIN_PENALTY,
-    CONF_STAGE,
     CONF_WEATHER_ENTITY,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     HISTORY_HOURS,
@@ -39,32 +35,37 @@ from .const import (
     SOURCE_PRIMARY,
     STORAGE_KEY,
     STORAGE_VERSION,
-    TREATABLE_MODELS,
+    SUBENTRY_TYPE_TREE,
 )
-from .models.crops import GENERIC_CROP
+from .models import phenology
 from .models.frost import evaluate_frost_risk
-from .models.hourly import resample_hourly
+from .models.hourly import HourlySample, complete_days, resample_hourly
 from .models.late_blight import evaluate_late_blight_risk
+from .models.phenology import GddState
 from .models.powdery_mildew import evaluate_powdery_mildew_risk
 from .models.treatments import Treatment, adjusted_level, protection_state
+from .tree import Tree
 
 _LOGGER = logging.getLogger(__name__)
 
+#: Profondeur d'historique pour les degrés-jours : couvre une reprise
+#: après plusieurs jours d'arrêt de Home Assistant.
+GDD_HISTORY_DAYS = 10
+
 
 class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
-    """Récupère les données et calcule les risques à intervalle régulier."""
+    """Calcule les risques du site et de chaque arbre."""
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
         self.entry = entry
         self.sources: dict[str, str] = {}
-        self.treatments: dict[str, Treatment] = {}
-        self.protection: dict[str, dict] = {}
-        #: État cumulatif de l'indice Gubler-Thomas.
-        self._mildew_index: int = 0
-        self._mildew_started: bool = False
-        self._mildew_last_day: str | None = None
-        #: Stade phénologique courant, pilotable par l'entité select.
-        self._stage_override: str | None = None
+        self.trees: dict[str, Tree] = {}
+        #: Traitements indexés par (subentry_id, modèle).
+        self.treatments: dict[tuple[str, str], Treatment] = {}
+        self.protection: dict[str, dict[str, dict]] = {}
+        self.gdd = GddState(season_year=dt_util.now().year)
+        #: Avancements de stade appliqués au dernier cycle, à notifier.
+        self.pending_advances: list[dict] = []
         self._last_rain_check: datetime | None = None
         self._store: Store = Store(
             hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}"
@@ -77,21 +78,60 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
         )
 
     # ------------------------------------------------------------------
+    # Arbres
+    # ------------------------------------------------------------------
+
+    def load_trees(self) -> None:
+        """(Re)construit la liste des arbres depuis les sous-entrées."""
+        existing = dict(self.trees)
+        self.trees = {}
+        for subentry in self.entry.subentries.values():
+            if subentry.subentry_type != SUBENTRY_TYPE_TREE:
+                continue
+            tree = Tree.from_subentry(subentry.subentry_id, dict(subentry.data))
+            previous = existing.get(subentry.subentry_id)
+            if previous is not None:
+                # Conserve l'état vivant (stade avancé, indice, niveaux).
+                tree.restore_state(previous.state_dict())
+                # Sauf si l'utilisateur vient de changer d'espèce.
+                if previous.crop != tree.crop:
+                    tree.stage = subentry.data.get("stage")
+                    tree.mildew_index = 0
+                    tree.mildew_started = False
+                    tree.mildew_last_day = None
+            self.trees[subentry.subentry_id] = tree
+
+    def tree(self, subentry_id: str) -> Tree | None:
+        return self.trees.get(subentry_id)
+
+    # ------------------------------------------------------------------
     # Persistance
     # ------------------------------------------------------------------
 
     async def async_load_state(self) -> None:
         stored = await self._store.async_load() or {}
-        mildew = stored.get("powdery_mildew", {})
-        self._mildew_index = int(mildew.get("index", 0))
-        self._mildew_started = bool(mildew.get("epidemic_started", False))
-        self._mildew_last_day = mildew.get("last_processed_day")
-        self._stage_override = stored.get("stage")
 
-        for target, data in (stored.get("treatments") or {}).items():
+        gdd = stored.get("gdd") or {}
+        self.gdd = GddState(
+            season_year=int(gdd.get("season_year", dt_util.now().year)),
+            total=float(gdd.get("total", 0.0)),
+            last_day=gdd.get("last_day"),
+            recent=list(gdd.get("recent") or []),
+        )
+
+        self.load_trees()
+        for subentry_id, data in (stored.get("trees") or {}).items():
+            tree = self.trees.get(subentry_id)
+            if tree is not None:
+                tree.restore_state(data)
+
+        for key, data in (stored.get("treatments") or {}).items():
+            if "|" not in key:
+                continue
+            subentry_id, target = key.split("|", 1)
             treatment = Treatment.from_dict(data)
             if treatment is not None:
-                self.treatments[target] = treatment
+                self.treatments[(subentry_id, target)] = treatment
 
         last_rain = stored.get("last_rain_check")
         if last_rain:
@@ -103,15 +143,19 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
     async def async_save_state(self) -> None:
         await self._store.async_save(
             {
-                "powdery_mildew": {
-                    "index": self._mildew_index,
-                    "epidemic_started": self._mildew_started,
-                    "last_processed_day": self._mildew_last_day,
+                "gdd": {
+                    "season_year": self.gdd.season_year,
+                    "total": self.gdd.total,
+                    "last_day": self.gdd.last_day,
+                    "recent": self.gdd.recent,
                 },
-                "stage": self._stage_override,
+                "trees": {
+                    subentry_id: tree.state_dict()
+                    for subentry_id, tree in self.trees.items()
+                },
                 "treatments": {
-                    target: treatment.to_dict()
-                    for target, treatment in self.treatments.items()
+                    f"{subentry_id}|{target}": treatment.to_dict()
+                    for (subentry_id, target), treatment in self.treatments.items()
                 },
                 "last_rain_check": (
                     self._last_rain_check.isoformat() if self._last_rain_check else None
@@ -120,29 +164,21 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
         )
 
     # ------------------------------------------------------------------
-    # Stade phénologique (piloté par l'entité select)
+    # Actions utilisateur
     # ------------------------------------------------------------------
 
-    @property
-    def crop(self) -> str:
-        data = {**self.entry.data, **self.entry.options}
-        return data.get(CONF_CROP, GENERIC_CROP)
-
-    @property
-    def stage(self) -> str | None:
-        if self._stage_override:
-            return self._stage_override
-        data = {**self.entry.data, **self.entry.options}
-        return data.get(CONF_STAGE)
-
-    async def async_set_stage(self, stage: str) -> None:
-        self._stage_override = stage
+    async def async_set_stage(self, subentry_id: str, stage: str) -> None:
+        """Correction manuelle du stade : elle fait autorité."""
+        tree = self.trees.get(subentry_id)
+        if tree is None or tree.stage == stage:
+            return
+        tree.stage = stage
+        tree.stage_auto_applied = False
+        tree.stage_changed_at = dt_util.utcnow()
+        if stage in phenology.BLOOM_STAGES and tree.bloom_date is None:
+            tree.bloom_date = dt_util.utcnow()
         await self.async_save_state()
         await self.async_request_refresh()
-
-    # ------------------------------------------------------------------
-    # Traitements
-    # ------------------------------------------------------------------
 
     async def async_log_treatment(
         self,
@@ -150,46 +186,48 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
         product: str,
         residual_days: float,
         rainfast_mm: float,
+        subentry_ids: list[str] | None = None,
     ) -> None:
-        self.treatments[target] = Treatment(
-            target=target,
-            product=product,
-            applied_at=dt_util.utcnow(),
-            residual_days=residual_days,
-            rainfast_mm=rainfast_mm,
-        )
+        ids = subentry_ids if subentry_ids is not None else list(self.trees)
+        now = dt_util.utcnow()
+        for subentry_id in ids:
+            tree = self.trees.get(subentry_id)
+            if tree is None or target not in tree.models:
+                continue
+            self.treatments[(subentry_id, target)] = Treatment(
+                target=target,
+                product=product,
+                applied_at=now,
+                residual_days=residual_days,
+                rainfast_mm=rainfast_mm,
+            )
         await self.async_save_state()
         await self.async_request_refresh()
 
-    async def async_clear_treatment(self, target: str | None = None) -> None:
-        if target is None:
-            self.treatments.clear()
-        else:
-            self.treatments.pop(target, None)
+    async def async_clear_treatment(
+        self, target: str | None = None, subentry_ids: list[str] | None = None
+    ) -> None:
+        ids = set(subentry_ids) if subentry_ids is not None else set(self.trees)
+        for key in list(self.treatments):
+            subentry_id, existing_target = key
+            if subentry_id in ids and (target is None or existing_target == target):
+                self.treatments.pop(key, None)
         await self.async_save_state()
         await self.async_request_refresh()
 
-    async def async_reset_mildew_index(self) -> None:
-        self._mildew_index = 0
-        self._mildew_started = False
-        self._mildew_last_day = None
+    async def async_reset_mildew_index(
+        self, subentry_ids: list[str] | None = None
+    ) -> None:
+        ids = subentry_ids if subentry_ids is not None else list(self.trees)
+        for subentry_id in ids:
+            tree = self.trees.get(subentry_id)
+            if tree is None:
+                continue
+            tree.mildew_index = 0
+            tree.mildew_started = False
+            tree.mildew_last_day = None
         await self.async_save_state()
         await self.async_request_refresh()
-
-    def _accumulate_rain(self, rain_rate: float | None, now: datetime) -> None:
-        """Cumule la pluie tombée depuis le dernier cycle sur chaque traitement."""
-        previous = self._last_rain_check
-        self._last_rain_check = now
-        if previous is None or rain_rate is None or rain_rate <= 0:
-            return
-        elapsed_hours = (now - previous).total_seconds() / 3600.0
-        if elapsed_hours <= 0 or elapsed_hours > 6:
-            # Trou d'indisponibilité : on n'extrapole pas sur une longue
-            # période à partir d'une intensité instantanée.
-            return
-        millimetres = rain_rate * elapsed_hours
-        for treatment in self.treatments.values():
-            treatment.add_rain(millimetres)
 
     # ------------------------------------------------------------------
     # Lecture des états
@@ -209,7 +247,6 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
     def _resolve_measurement(
         self, entry_data: dict, measurement: str
     ) -> tuple[float | None, str]:
-        """(valeur, origine), la station Ecowitt restant prioritaire."""
         primary_key, fallback_key = MEASUREMENT_SOURCES[measurement]
 
         value = self._state_float(entry_data.get(primary_key))
@@ -234,6 +271,18 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
             return entry_data.get(fallback_key)
         return entry_data.get(primary_key) or entry_data.get(fallback_key)
 
+    def _accumulate_rain(self, rain_rate: float | None, now: datetime) -> None:
+        previous = self._last_rain_check
+        self._last_rain_check = now
+        if previous is None or rain_rate is None or rain_rate <= 0:
+            return
+        elapsed_hours = (now - previous).total_seconds() / 3600.0
+        if elapsed_hours <= 0 or elapsed_hours > 6:
+            return
+        millimetres = rain_rate * elapsed_hours
+        for treatment in self.treatments.values():
+            treatment.add_rain(millimetres)
+
     # ------------------------------------------------------------------
     # Prévisions et historique
     # ------------------------------------------------------------------
@@ -241,7 +290,6 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
     async def _async_get_forecast(
         self, weather_entity: str | None
     ) -> list[tuple[datetime, float]]:
-        """Prévisions horaires via weather.get_forecasts (MeteoSwiss, Met.no...)."""
         if not weather_entity:
             return []
         try:
@@ -273,8 +321,9 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
             result.append((when_dt, temp))
         return result
 
-    async def _async_get_hourly(self, entry_data: dict) -> list:
-        """Série horaire reconstruite depuis le recorder."""
+    async def _async_get_hourly(
+        self, entry_data: dict, hours: int
+    ) -> list[HourlySample]:
         temp_entity = self._resolve_history_entity(entry_data, "temperature")
         humidity_entity = self._resolve_history_entity(entry_data, "humidity")
         rain_entity = self._resolve_history_entity(entry_data, "rain_rate")
@@ -286,7 +335,7 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
         if not entity_ids:
             return []
 
-        start = dt_util.utcnow() - timedelta(hours=HISTORY_HOURS)
+        start = dt_util.utcnow() - timedelta(hours=hours)
 
         def _fetch() -> dict[str, list[State]]:
             return history.state_changes_during_period(
@@ -321,14 +370,59 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
         if leaf_entity:
             for state in raw.get(leaf_entity, []):
                 value = _numeric(state)
-                if value is not None:
-                    # Capteur analogique : humectation > 0 = feuille mouillée.
-                    wet = value > 0
-                else:
-                    wet = state.state == "on"
+                wet = value > 0 if value is not None else state.state == "on"
                 records.append({"time": state.last_changed, "leaf_wet": wet})
 
         return resample_hourly(records)
+
+    # ------------------------------------------------------------------
+    # Degrés-jours et phénologie
+    # ------------------------------------------------------------------
+
+    def _update_gdd(self, hourly: list[HourlySample]) -> None:
+        """Cumule les degrés-jours des journées complètes disponibles."""
+        days: list[tuple[date, float | None, float | None]] = []
+        for day, samples in complete_days(hourly):
+            temps = [s.temp for s in samples if s.temp is not None]
+            if not temps:
+                continue
+            days.append((day, min(temps), max(temps)))
+        if days:
+            self.gdd = phenology.accumulate(self.gdd, days)
+
+    def _advance_stages(self, now: datetime) -> None:
+        """Applique l'avancement automatique des stades.
+
+        L'avancement est monotone et ne s'applique qu'aux arbres dont
+        l'utilisateur n'a pas désactivé l'automatisme.
+        """
+        self.pending_advances = []
+        for tree in self.trees.values():
+            if not tree.auto_advance:
+                continue
+            proposed = phenology.propose_advance(
+                tree.crop, tree.stage, self.gdd.total, tree.gdd_offset
+            )
+            if proposed is None:
+                continue
+
+            previous = tree.stage
+            tree.stage = proposed
+            tree.stage_auto_applied = True
+            tree.stage_changed_at = now
+            if proposed in phenology.BLOOM_STAGES and tree.bloom_date is None:
+                tree.bloom_date = now
+
+            self.pending_advances.append(
+                {
+                    "subentry_id": tree.subentry_id,
+                    "tree": tree.display_name,
+                    "crop": tree.crop,
+                    "previous_stage": previous,
+                    "stage": proposed,
+                    "gdd": round(self.gdd.total, 1),
+                }
+            )
 
     # ------------------------------------------------------------------
     # Boucle principale
@@ -338,6 +432,8 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
         entry_data = {**self.entry.data, **self.entry.options}
         enabled = entry_data.get(CONF_ENABLED_MODELS, [MODEL_FROST])
         now = dt_util.utcnow()
+
+        self.load_trees()
 
         values: dict[str, float | None] = {}
         sources: dict[str, str] = {}
@@ -357,52 +453,86 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
         if weather_state is not None:
             cloud_cover = weather_state.attributes.get("cloud_coverage")
 
-        results: dict[str, object] = {}
-
-        if MODEL_FROST in enabled:
-            results[MODEL_FROST] = evaluate_frost_risk(
-                values["temperature"],
-                values["humidity"],
-                values["wind_speed"],
-                cloud_cover,
-                forecast,
-                crop=self.crop,
-                stage=self.stage,
-            )
-
-        needs_history = any(
-            model in enabled for model in (MODEL_LATE_BLIGHT, MODEL_POWDERY_MILDEW)
+        # Une seule lecture d'historique, assez profonde pour les
+        # degrés-jours, réutilisée par tous les modèles et tous les arbres.
+        hourly = await self._async_get_hourly(
+            entry_data, max(HISTORY_HOURS, GDD_HISTORY_DAYS * 24)
         )
-        if needs_history:
-            hourly = await self._async_get_hourly(entry_data)
+        self._update_gdd(hourly)
+        self._advance_stages(now)
 
-            if MODEL_LATE_BLIGHT in enabled:
-                results[MODEL_LATE_BLIGHT] = evaluate_late_blight_risk(hourly)
+        # Fenêtre courte pour les modèles maladie.
+        recent_cutoff = dt_util.utcnow() - timedelta(hours=HISTORY_HOURS)
+        recent = [s for s in hourly if s.time >= recent_cutoff]
 
-            if MODEL_POWDERY_MILDEW in enabled:
-                mildew = evaluate_powdery_mildew_risk(
-                    hourly,
-                    index=self._mildew_index,
-                    epidemic_started=self._mildew_started,
-                    last_processed_day=self._mildew_last_day,
-                    apply_rain_penalty=entry_data.get(CONF_RAIN_PENALTY, True),
-                )
-                self._mildew_index = mildew.index
-                self._mildew_started = mildew.epidemic_started
-                self._mildew_last_day = mildew.last_processed_day
-                results[MODEL_POWDERY_MILDEW] = mildew
+        blight_shared = (
+            evaluate_late_blight_risk(recent) if MODEL_LATE_BLIGHT in enabled else None
+        )
+        rain_penalty = entry_data.get(CONF_RAIN_PENALTY, True)
 
-        # Protection en cours : rétrograde le niveau affiché et expose
-        # l'échéance « protégé jusqu'à ».
+        results: dict[str, dict] = {}
         self.protection = {}
-        for target in TREATABLE_MODELS:
-            if target not in enabled:
-                continue
-            treatment = self.treatments.get(target)
-            self.protection[target] = protection_state(treatment, now)
-            result = results.get(target)
-            if result is not None and treatment is not None:
-                result.level = adjusted_level(result.level, treatment, now)
+
+        for subentry_id, tree in self.trees.items():
+            tree_results: dict[str, object] = {}
+
+            if MODEL_FROST in enabled and MODEL_FROST in tree.models:
+                tree_results[MODEL_FROST] = evaluate_frost_risk(
+                    values["temperature"],
+                    values["humidity"],
+                    values["wind_speed"],
+                    cloud_cover,
+                    forecast,
+                    crop=tree.crop,
+                    stage=tree.stage,
+                )
+
+            if (
+                MODEL_LATE_BLIGHT in enabled
+                and MODEL_LATE_BLIGHT in tree.models
+                and blight_shared is not None
+            ):
+                # Le risque météo est identique pour tout le site ; seule
+                # la protection diffère d'un arbre à l'autre.
+                tree_results[MODEL_LATE_BLIGHT] = evaluate_late_blight_risk(recent)
+
+            if MODEL_POWDERY_MILDEW in enabled and MODEL_POWDERY_MILDEW in tree.models:
+                mildew = evaluate_powdery_mildew_risk(
+                    recent,
+                    index=tree.mildew_index,
+                    epidemic_started=tree.mildew_started,
+                    last_processed_day=tree.mildew_last_day,
+                    apply_rain_penalty=rain_penalty,
+                )
+                tree.mildew_index = mildew.index
+                tree.mildew_started = mildew.epidemic_started
+                tree.mildew_last_day = mildew.last_processed_day
+                tree_results[MODEL_POWDERY_MILDEW] = mildew
+
+            # Protection en cours : rétrograde le niveau affiché.
+            tree_protection: dict[str, dict] = {}
+            for target in (MODEL_LATE_BLIGHT, MODEL_POWDERY_MILDEW):
+                if target not in tree_results:
+                    continue
+                treatment = self.treatments.get((subentry_id, target))
+                tree_protection[target] = protection_state(treatment, now)
+                if treatment is not None:
+                    tree_results[target].level = adjusted_level(
+                        tree_results[target].level, treatment, now
+                    )
+
+            self.protection[subentry_id] = tree_protection
+            results[subentry_id] = tree_results
 
         await self.async_save_state()
         return results
+
+    # ------------------------------------------------------------------
+    # Accès pratique pour les entités
+    # ------------------------------------------------------------------
+
+    def result(self, subentry_id: str, model: str):
+        return (self.data or {}).get(subentry_id, {}).get(model)
+
+    def tree_protection(self, subentry_id: str, model: str) -> dict:
+        return (self.protection.get(subentry_id) or {}).get(model, {})

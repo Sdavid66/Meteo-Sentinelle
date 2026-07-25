@@ -3,30 +3,23 @@
     "step": {
       "user": {
         "title": "Sentinelle Ecowitt",
-        "description": "Select the entities from your existing Ecowitt station (already set up in Home Assistant) to use for predictions.",
+        "description": "Sensors and forecasts shared across the site. Monitored trees are added one by one afterwards, from the integration page.",
         "data": {
-          "name": "Name",
+          "name": "Site name",
           "temperature_entity": "Temperature sensor",
           "humidity_entity": "Humidity sensor",
           "wind_speed_entity": "Wind speed sensor (optional)",
           "rain_rate_entity": "Rain rate sensor, in mm/h (optional)",
           "leaf_wetness_entity": "Leaf wetness sensor (optional)",
           "weather_entity": "Weather entity for forecasts (e.g. MeteoSwiss)",
-          "enabled_models": "Risk models to enable"
-        }
-      },
-      "crop": {
-        "title": "Monitored crop",
-        "description": "Frost thresholds depend on the crop and its stage: an apple tree tolerates -18 °C when dormant but is damaged at -2 °C in full bloom. Pick your crop so alerts use real critical temperatures (Washington State University T10/T90 tables). The stage can then be changed at any time from the \"Phenological stage\" entity.",
-        "data": {
-          "crop": "Crop",
-          "stage": "Current phenological stage",
-          "powdery_mildew_rain_penalty": "Powdery mildew: account for the inhibiting effect of rain"
+          "enabled_models": "Risk models to enable",
+          "powdery_mildew_rain_penalty": "Powdery mildew: account for the inhibiting effect of rain",
+          "notifications": "Create notifications in Home Assistant"
         }
       },
       "fallback": {
         "title": "Backup sources (optional)",
-        "description": "If you use the MeteoSwiss integration (or another official station), you can point to its real-time sensors here. They automatically take over whenever an Ecowitt sensor is missing or fails. Leave empty to rely on your Ecowitt station only.",
+        "description": "If you use the MeteoSwiss integration (or another official station), point to its real-time sensors here. They automatically take over whenever an Ecowitt sensor is missing or fails.",
         "data": {
           "fallback_temperature_entity": "Backup temperature (MeteoSwiss)",
           "fallback_humidity_entity": "Backup humidity (MeteoSwiss)",
@@ -39,11 +32,45 @@
       "already_configured": "This instance is already configured."
     }
   },
+  "config_subentries": {
+    "tree": {
+      "title": "Monitored tree",
+      "step": {
+        "tree": {
+          "title": "Add a tree",
+          "description": "Name the tree (\"Golden by the fence\", \"Cherry on the terrace\") and pick its species: the displayed name combines both, so trees stay distinguishable in every list.\n\nThe stage advances automatically from accumulated growing degree days, and you are notified each time. You can always correct it by hand — your correction takes precedence. The offset recalibrates the model if your orchard is consistently ahead (positive) or behind (negative) the table.",
+          "data": {
+            "tree_name": "Tree name",
+            "crop": "Species",
+            "stage": "Current phenological stage",
+            "auto_advance": "Advance stage automatically (growing degree days)",
+            "gdd_offset": "Degree-day offset (local calibration)"
+          }
+        },
+        "reconfigure": {
+          "title": "Edit tree",
+          "description": "Name the tree (\"Golden by the fence\", \"Cherry on the terrace\") and pick its species: the displayed name combines both, so trees stay distinguishable in every list.\n\nThe stage advances automatically from accumulated growing degree days, and you are notified each time. You can always correct it by hand — your correction takes precedence. The offset recalibrates the model if your orchard is consistently ahead (positive) or behind (negative) the table.",
+          "data": {
+            "tree_name": "Tree name",
+            "crop": "Species",
+            "stage": "Current phenological stage",
+            "auto_advance": "Advance stage automatically (growing degree days)",
+            "gdd_offset": "Degree-day offset (local calibration)"
+          }
+        }
+      },
+      "entry_type": "Tree",
+      "initiate_flow": {
+        "user": "Add a tree",
+        "reconfigure": "Edit tree"
+      }
+    }
+  },
   "options": {
     "step": {
       "init": {
-        "title": "Update configuration",
-        "description": "Ecowitt sensors, monitored crop, then optional backup sources.",
+        "title": "Site settings",
+        "description": "Sensors, forecasts and alerts. Trees are managed from the integration page.",
         "data": {
           "temperature_entity": "Temperature sensor",
           "humidity_entity": "Humidity sensor",
@@ -52,14 +79,20 @@
           "leaf_wetness_entity": "Leaf wetness sensor (optional)",
           "weather_entity": "Weather entity for forecasts (e.g. MeteoSwiss)",
           "enabled_models": "Risk models to enable",
-          "crop": "Crop",
-          "stage": "Current phenological stage",
           "powdery_mildew_rain_penalty": "Powdery mildew: account for the inhibiting effect of rain",
+          "notifications": "Create notifications in Home Assistant",
           "fallback_temperature_entity": "Backup temperature (MeteoSwiss)",
           "fallback_humidity_entity": "Backup humidity (MeteoSwiss)",
           "fallback_wind_speed_entity": "Backup wind speed (MeteoSwiss)",
           "fallback_rain_rate_entity": "Backup rain (MeteoSwiss)"
         }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "stage": {
+        "name": "Phenological stage"
       }
     }
   },
@@ -71,6 +104,10 @@
         "target": {
           "name": "Target disease",
           "description": "Risk model concerned."
+        },
+        "tree": {
+          "name": "Tree(s)",
+          "description": "Leave empty for all relevant trees."
         },
         "product": {
           "name": "Product",
@@ -93,12 +130,36 @@
         "target": {
           "name": "Target disease",
           "description": "Leave empty to clear all."
+        },
+        "tree": {
+          "name": "Tree(s)",
+          "description": "Leave empty for all trees."
         }
       }
     },
     "reset_powdery_mildew_index": {
       "name": "Reset powdery mildew index",
-      "description": "Sets the Gubler-Thomas index back to zero."
+      "description": "Sets the Gubler-Thomas index back to zero.",
+      "fields": {
+        "tree": {
+          "name": "Tree(s)",
+          "description": "Leave empty for all trees."
+        }
+      }
+    },
+    "set_stage": {
+      "name": "Set phenological stage",
+      "description": "Forces the stage of one or more trees.",
+      "fields": {
+        "tree": {
+          "name": "Tree(s)",
+          "description": "Name of the tree(s) concerned."
+        },
+        "stage": {
+          "name": "Stage",
+          "description": "Technical stage key (e.g. full_bloom)."
+        }
+      }
     }
   }
 }

@@ -11,7 +11,7 @@ Assistant, combinés aux prévisions météo.
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20the%20project-orange?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/sdavid66)
 ![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)
-![Version](https://img.shields.io/badge/version-0.3.1-blue.svg)
+![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)
 
 ## Pourquoi
 
@@ -101,24 +101,122 @@ quelle autre source de capteurs Home Assistant peut servir de secours.
 
 ## Configuration
 
-La configuration se fait en trois étapes.
+La configuration sépare ce qui est **commun au site** de ce qui est
+**propre à chaque arbre**.
 
-**Étape 1 — votre station Ecowitt :**
+**À l'installation — le site :**
 - le capteur de température et d'humidité de votre station ;
 - (optionnel) vent, intensité de pluie (mm/h), humectation foliaire ;
 - l'entité météo à utiliser pour les prévisions (ex. MeteoSwiss) ;
-- les modèles de risque à activer.
+- les modèles de risque à activer et les notifications ;
+- (facultatif) les capteurs MeteoSwiss de secours.
 
-**Étape 2 — culture surveillée :**
-- la culture (détermine les seuils de gel T10/T90) et son stade actuel ;
-- la prise en compte de l'effet inhibiteur de la pluie sur l'oïdium.
+**Ensuite — vos arbres**, un par un, via le bouton **« Ajouter un
+arbre »** sur la page de l'intégration. Pour chacun :
 
-**Étape 3 — sources de secours (facultatif) :**
-- les capteurs temps réel MeteoSwiss (température, humidité, vent,
-  pluie) qui prendront le relais en cas de panne.
+| Champ | Rôle |
+|---|---|
+| Nom | « Golden du fond », « Cerisier de la terrasse »… |
+| Espèce | détermine les seuils de gel T10/T90 et les maladies suivies |
+| Stade phénologique | position actuelle dans la saison |
+| Avancement automatique | laisse les degrés-jours faire progresser le stade |
+| Décalage de degrés-jours | recale le modèle sur votre verger |
+
+Les capteurs et la météo restent **partagés** : ajouter un dixième
+arbre ne déclenche aucune requête supplémentaire.
+
+## Plusieurs arbres, chacun son calcul
+
+Chaque arbre devient un **appareil Home Assistant distinct**, nommé
+« Espèce + votre nom » (par exemple *Pommier Golden du fond*). Ses
+entités sont rattachées à cet appareil :
+
+- **Risque de gel** — calculé avec les seuils du stade de *cet* arbre.
+  Un pommier en floraison et un cerisier encore en bourgeon gonflé, la
+  même nuit, ne donnent pas la même alerte.
+- **Stade phénologique** — en capteur (historisable) et en `select`
+  (modifiable).
+- **Avancement automatique** — interrupteur, pour reprendre la main
+  arbre par arbre.
+- **Risques maladie et protection** — uniquement ceux qui concernent
+  l'espèce. Un pommier reçoit l'oïdium, une pomme de terre le mildiou ;
+  appliquer le mildiou de la pomme de terre à un pommier n'aurait aucun
+  sens agronomique.
+
+**Comment distinguer les stades d'un arbre à l'autre ?** Trois niveaux
+de lisibilité, pour que le contexte ne se perde jamais :
+
+1. l'entité appartient à l'appareil de l'arbre (« Pommier Golden ») ;
+2. les options du `select` sont préfixées par l'espèce — *« Pommier —
+   Pleine floraison »*, et non *« Pleine floraison »* ;
+3. les attributs `tree`, `crop_label` et `stage_label` portent le
+   contexte pour les cartes et les modèles Jinja.
+
+## Avancement automatique du stade
+
+Le développement printanier suit l'accumulation de chaleur, pas le
+calendrier. Le plugin cumule donc des **degrés-jours** (base 5,6 °C,
+depuis le 1er janvier, méthode de la moyenne journalière) et compare ce
+cumul à des seuils par espèce et par stade.
+
+Quand un seuil est franchi, le stade est **avancé et appliqué
+automatiquement**, et vous en êtes informé — notification et événement.
+Trois garde-fous :
+
+- **votre correction fait autorité.** Changez le stade à la main depuis
+  le `select` : il devient la nouvelle référence ;
+- **l'avancement est monotone.** Le modèle ne fait jamais reculer un
+  stade : un redoux ne « défait » pas une floraison constatée ;
+- **tout est débrayable.** L'interrupteur *Avancement automatique*
+  coupe l'automatisme pour un arbre donné.
+
+Le capteur de stade expose aussi le prochain stade attendu, les
+degrés-jours restants pour l'atteindre, la date de floraison relevée et
+une estimation des jours avant récolte.
+
+⚠️ **Ces seuils sont calibrés régionalement.** Les valeurs de référence
+proviennent de données nord-américaines (base 42 °F, MSU Enviroweather).
+Sous un autre climat ou avec une autre variété, les mêmes stades
+surviennent à des cumuls différents. Le champ **décalage de
+degrés-jours** sert précisément à recaler le modèle : positif si votre
+verger est régulièrement en avance sur les annonces, négatif s'il est en
+retard.
+
+## Alertes
+
+Deux mécanismes complémentaires, tous deux par arbre :
+
+**Notifications intégrées** (activées par défaut, désactivables dans les
+options) — une notification Home Assistant à chaque aggravation, à
+partir du niveau « alerte » :
+
+> **Pommier Golden du fond — gel : risque sévère**
+> Stade : Pleine floraison
+> minimum attendu −4,1 °C sous abri, seuil de dégâts −2,2 °C, vers 03h
+
+**Événements**, pour vos propres automatisations :
+
+| Événement | Émis quand |
+|---|---|
+| `sentinelle_ecowitt_risk_changed` | un niveau de risque change |
+| `sentinelle_ecowitt_stage_advanced` | un stade est avancé automatiquement |
+
+Les données de l'événement contiennent l'arbre, l'espèce, le stade, le
+modèle, l'ancien et le nouveau niveau, un booléen `escalated` et un
+`detail` déjà rédigé.
+
+Un **blueprint** prêt à l'emploi
+(`blueprints/automation/sentinelle_ecowitt/alerte_sentinelle.yaml`) route
+ces événements vers le canal de votre choix, avec filtrage par niveau
+minimal et par type de risque.
+
+Deux principes de conception : on n'alerte **qu'aux changements** — un
+rappel toutes les 15 minutes apprendrait vite à ignorer le plugin — et
+**seulement à l'aggravation**, une amélioration n'ayant pas à réveiller
+qui que ce soit.
 
 Ces réglages sont modifiables à tout moment via **Options** sur
-l'intégration.
+l'intégration ; les arbres se modifient depuis leur propre entrée.
 
 ## Modèles de risque
 
@@ -193,8 +291,9 @@ enregistre une application :
 ```yaml
 action: sentinelle_ecowitt.log_treatment
 data:
-  target: late_blight
-  product: Bouillie bordelaise
+  target: powdery_mildew
+  tree: Pommier Golden du fond   # omis = tous les arbres concernés
+  product: Soufre mouillable
   residual_days: 10
   rainfast_mm: 20
 ```
@@ -205,6 +304,9 @@ donnant la date de fin de protection, en tenant compte de la rémanence
 est considérée comme perdue même si la rémanence n'est pas écoulée.
 Tant qu'une protection est active, le niveau de risque affiché est
 rétrogradé d'un cran.
+
+Le suivi est **par arbre** : vous pouvez traiter le pommier aujourd'hui
+et le poirier la semaine prochaine sans que les deux se confondent.
 
 Aucune base de produits n'est embarquée : renseignez rémanence et
 résistance au lavage d'après l'étiquette de ce que vous appliquez.
@@ -231,18 +333,18 @@ en deçà d'un outil professionnel sur trois points :
 - Critères de Hutton — [AHDB / James Hutton Institute](https://potatoes.ahdb.org.uk/development-and-implementation-of-a-new-national-warning-system-for-potato-late-blight-in-great-britain-hutton-criteria)
 - Indice Gubler-Thomas — [UC IPM, Gubler *et al.* 1999](https://uspest.org/npdn/riskdoc.html)
 - Températures critiques T10/T90 — [WSU, publié par USU Extension IPM-012-11](https://extension.usu.edu/productionhort/files/CriticalTemperaturesFrostDamageFruitTrees.pdf)
+- Degrés-jours et phénologie du pommier — [MSU Enviroweather](https://enviroweather.msu.edu/weathermodels/growingdegreedays)
 
 ## Feuille de route
 
-- **v0.3 (actuelle)** : critères de Hutton, indice Gubler-Thomas,
-  seuils de gel phénologiques T10/T90, température de surface, suivi
-  des traitements.
-- v0.4 : tavelure du pommier (table de Mills), cohortes d'infection
-  avec latence pour le mildiou, historique de risque graphable.
-- v0.5 : agrégation de plusieurs sources météo, notifications
-  intégrées, blueprint d'automatisation prêt à l'emploi.
-- v0.6 : avancement automatique du stade phénologique par cumul de
-  degrés-jours, sensibilité variétale.
+- **v0.4 (actuelle)** : plusieurs arbres surveillés, chacun avec son
+  stade et ses calculs ; avancement automatique par degrés-jours ;
+  alertes par événements, notifications et blueprint.
+- v0.5 : tavelure du pommier (table de Mills), cohortes d'infection
+  avec latence pour le mildiou.
+- v0.6 : sensibilité variétale, agrégation de plusieurs sources météo.
+- v0.7 : ajustement du décalage de degrés-jours par apprentissage sur
+  les corrections manuelles de l'utilisateur.
 
 Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le détail des choix de
 conception.

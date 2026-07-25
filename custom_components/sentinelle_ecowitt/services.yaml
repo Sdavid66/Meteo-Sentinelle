@@ -1,10 +1,10 @@
 log_treatment:
   name: Enregistrer un traitement
   description: >-
-    Déclare une application de traitement pour une maladie donnée. Le
-    plugin en déduit jusqu'à quand la culture est protégée, en tenant
-    compte de la rémanence et du lessivage par la pluie. Renseignez la
-    rémanence et la résistance au lavage d'après l'étiquette du produit.
+    Déclare une application de traitement. Le plugin en déduit jusqu'à
+    quand la culture est protégée, en tenant compte de la rémanence et du
+    lessivage par la pluie. Renseignez ces deux valeurs d'après
+    l'étiquette du produit.
   fields:
     target:
       name: Maladie visée
@@ -17,6 +17,15 @@ log_treatment:
               value: late_blight
             - label: Oïdium
               value: powdery_mildew
+    tree:
+      name: Arbre(s)
+      description: >-
+        Nom du ou des arbres traités, tel qu'affiché dans Home Assistant
+        (ex. « Pommier Golden »). Laisser vide pour appliquer à tous les
+        arbres concernés par cette maladie.
+      example: Pommier Golden
+      selector:
+        object:
     product:
       name: Produit
       description: Nom du produit appliqué, à titre de traçabilité.
@@ -50,11 +59,11 @@ log_treatment:
 
 clear_treatment:
   name: Effacer un traitement
-  description: Supprime le traitement enregistré (toutes les maladies si aucune n'est précisée).
+  description: Supprime le traitement enregistré.
   fields:
     target:
       name: Maladie visée
-      description: Laisser vide pour tout effacer.
+      description: Laisser vide pour effacer toutes les maladies.
       selector:
         select:
           options:
@@ -62,10 +71,44 @@ clear_treatment:
               value: late_blight
             - label: Oïdium
               value: powdery_mildew
+    tree:
+      name: Arbre(s)
+      description: Laisser vide pour effacer sur tous les arbres.
+      selector:
+        object:
 
 reset_powdery_mildew_index:
   name: Réinitialiser l'indice oïdium
   description: >-
     Remet l'indice Gubler-Thomas à zéro et annule le démarrage de
-    l'épidémie. À utiliser en début de saison, ou après une remise à
-    plat du vignoble ou de la parcelle.
+    l'épidémie. À utiliser en début de saison.
+  fields:
+    tree:
+      name: Arbre(s)
+      description: Laisser vide pour réinitialiser tous les arbres.
+      selector:
+        object:
+
+set_stage:
+  name: Définir le stade phénologique
+  description: >-
+    Force le stade d'un ou plusieurs arbres. Une correction manuelle fait
+    autorité : elle devient la nouvelle référence de l'avancement
+    automatique.
+  fields:
+    tree:
+      name: Arbre(s)
+      description: Nom du ou des arbres concernés.
+      required: true
+      example: Pommier Golden
+      selector:
+        object:
+    stage:
+      name: Stade
+      description: >-
+        Clé technique du stade (ex. full_bloom, green_tip). Visible dans
+        l'attribut « stage_key » du capteur de stade.
+      required: true
+      example: full_bloom
+      selector:
+        text:

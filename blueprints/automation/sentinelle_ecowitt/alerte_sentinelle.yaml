@@ -1,0 +1,120 @@
+blueprint:
+  name: Sentinelle Ecowitt — alertes de risque
+  description: >-
+    Envoie une notification lorsqu'un arbre surveillé passe à un niveau de
+    risque plus élevé (gel, mildiou, oïdium), ou lorsque son stade
+    phénologique est avancé automatiquement.
+
+
+    Le message inclut l'arbre concerné, son stade, et le détail utile
+    (température minimale attendue et seuil de dégâts pour le gel, indice
+    ou critère rempli pour les maladies).
+  domain: automation
+  author: Sdavid66
+  input:
+    notify_service:
+      name: Service de notification
+      description: >-
+        Par exemple notify.mobile_app_mon_telephone, notify.persistent_notification
+        ou un service Telegram.
+      selector:
+        text:
+    minimum_level:
+      name: Niveau minimal
+      description: Niveau à partir duquel notifier.
+      default: warning
+      selector:
+        select:
+          options:
+            - label: À surveiller
+              value: watch
+            - label: Alerte
+              value: warning
+            - label: Risque sévère
+              value: severe
+    models:
+      name: Risques à surveiller
+      default:
+        - frost
+        - late_blight
+        - powdery_mildew
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Gel
+              value: frost
+            - label: Mildiou
+              value: late_blight
+            - label: Oïdium
+              value: powdery_mildew
+    notify_stage_changes:
+      name: Notifier les changements de stade automatiques
+      default: true
+      selector:
+        boolean:
+
+mode: queued
+max: 25
+
+triggers:
+  - trigger: event
+    event_type: sentinelle_ecowitt_risk_changed
+    id: risk
+  - trigger: event
+    event_type: sentinelle_ecowitt_stage_advanced
+    id: stage
+
+variables:
+  minimum_level: !input minimum_level
+  models: !input models
+  notify_stage_changes: !input notify_stage_changes
+  ranks:
+    none: 0
+    watch: 1
+    warning: 2
+    severe: 3
+
+conditions:
+  - condition: or
+    conditions:
+      # Alerte de risque : uniquement une aggravation, du bon type, au
+      # moins au niveau demandé.
+      - condition: and
+        conditions:
+          - "{{ trigger.id == 'risk' }}"
+          - "{{ trigger.event.data.model in models }}"
+          - "{{ trigger.event.data.escalated }}"
+          - >-
+            {{ ranks.get(trigger.event.data.level, 0)
+               >= ranks.get(minimum_level, 2) }}
+      # Changement de stade automatique.
+      - condition: and
+        conditions:
+          - "{{ trigger.id == 'stage' }}"
+          - "{{ notify_stage_changes }}"
+
+actions:
+  - choose:
+      - conditions:
+          - "{{ trigger.id == 'risk' }}"
+        sequence:
+          - action: !input notify_service
+            data:
+              title: >-
+                {{ trigger.event.data.tree }} — {{ trigger.event.data.model_label }} :
+                {{ trigger.event.data.level_label }}
+              message: >-
+                {% set d = trigger.event.data %}
+                Stade : {{ d.stage_label or 'non renseigné' }}.
+                {{ (d.detail ~ '.') if d.detail else '' }}
+      - conditions:
+          - "{{ trigger.id == 'stage' }}"
+        sequence:
+          - action: !input notify_service
+            data:
+              title: "{{ trigger.event.data.tree }} — stade avancé automatiquement"
+              message: >-
+                {% set d = trigger.event.data %}
+                Nouveau stade : {{ d.stage }} ({{ d.gdd }} °C·j cumulés).
+                Corrigez-le à la main si l'observation ne correspond pas.

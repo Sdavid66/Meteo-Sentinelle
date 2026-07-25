@@ -3,30 +3,23 @@
     "step": {
       "user": {
         "title": "Sentinelle Ecowitt",
-        "description": "Sélectionnez les entités de votre station Ecowitt (déjà intégrée à Home Assistant) à utiliser pour les prédictions.",
+        "description": "Capteurs et prévisions communs au site. Les arbres surveillés s'ajoutent ensuite un par un depuis la page de l'intégration.",
         "data": {
-          "name": "Nom",
+          "name": "Nom du site",
           "temperature_entity": "Capteur de température",
           "humidity_entity": "Capteur d'humidité",
           "wind_speed_entity": "Capteur de vent (optionnel)",
           "rain_rate_entity": "Capteur d'intensité de pluie, en mm/h (optionnel)",
           "leaf_wetness_entity": "Capteur d'humectation foliaire (optionnel)",
           "weather_entity": "Entité météo pour les prévisions (ex. MeteoSwiss)",
-          "enabled_models": "Modèles de risque à activer"
-        }
-      },
-      "crop": {
-        "title": "Culture surveillée",
-        "description": "Le seuil de gel dépend de la culture et de son stade : un pommier supporte -18 °C en dormance mais souffre dès -2 °C en pleine floraison. Choisissez votre culture pour que les alertes utilisent les températures critiques réelles (tables T10/T90 de Washington State University). Le stade se change ensuite à tout moment depuis l'entité « Stade phénologique ».",
-        "data": {
-          "crop": "Culture",
-          "stage": "Stade phénologique actuel",
-          "powdery_mildew_rain_penalty": "Oïdium : tenir compte de l'effet inhibiteur de la pluie"
+          "enabled_models": "Modèles de risque à activer",
+          "powdery_mildew_rain_penalty": "Oïdium : tenir compte de l'effet inhibiteur de la pluie",
+          "notifications": "Créer des notifications dans Home Assistant"
         }
       },
       "fallback": {
         "title": "Sources de secours (optionnel)",
-        "description": "Si vous utilisez l'intégration MeteoSwiss (ou une autre station officielle), vous pouvez indiquer ici ses capteurs temps réel. Ils prendront automatiquement le relais lorsqu'un capteur Ecowitt est absent ou tombe en panne. Laissez vide pour utiliser uniquement votre station Ecowitt.",
+        "description": "Si vous utilisez l'intégration MeteoSwiss (ou une autre station officielle), indiquez ici ses capteurs temps réel. Ils prendront automatiquement le relais lorsqu'un capteur Ecowitt est absent ou tombe en panne.",
         "data": {
           "fallback_temperature_entity": "Température de secours (MeteoSwiss)",
           "fallback_humidity_entity": "Humidité de secours (MeteoSwiss)",
@@ -39,11 +32,45 @@
       "already_configured": "Cette instance est déjà configurée."
     }
   },
+  "config_subentries": {
+    "tree": {
+      "title": "Arbre surveillé",
+      "step": {
+        "tree": {
+          "title": "Ajouter un arbre",
+          "description": "Nommez l'arbre (« Golden du fond », « Cerisier de la terrasse ») et choisissez son espèce : le nom affiché combinera les deux, ce qui permet de distinguer les arbres dans toutes les listes.\n\nLe stade se met à jour automatiquement à partir du cumul de degrés-jours, et vous êtes notifié à chaque avancement. Vous pouvez toujours le corriger à la main : votre correction fait autorité. Le décalage permet de recaler le modèle si votre verger est régulièrement en avance (valeur positive) ou en retard (valeur négative) sur les prévisions.",
+          "data": {
+            "tree_name": "Nom de l'arbre",
+            "crop": "Espèce",
+            "stage": "Stade phénologique actuel",
+            "auto_advance": "Avancer le stade automatiquement (degrés-jours)",
+            "gdd_offset": "Décalage de degrés-jours (recalage local)"
+          }
+        },
+        "reconfigure": {
+          "title": "Modifier l'arbre",
+          "description": "Nommez l'arbre (« Golden du fond », « Cerisier de la terrasse ») et choisissez son espèce : le nom affiché combinera les deux, ce qui permet de distinguer les arbres dans toutes les listes.\n\nLe stade se met à jour automatiquement à partir du cumul de degrés-jours, et vous êtes notifié à chaque avancement. Vous pouvez toujours le corriger à la main : votre correction fait autorité. Le décalage permet de recaler le modèle si votre verger est régulièrement en avance (valeur positive) ou en retard (valeur négative) sur les prévisions.",
+          "data": {
+            "tree_name": "Nom de l'arbre",
+            "crop": "Espèce",
+            "stage": "Stade phénologique actuel",
+            "auto_advance": "Avancer le stade automatiquement (degrés-jours)",
+            "gdd_offset": "Décalage de degrés-jours (recalage local)"
+          }
+        }
+      },
+      "entry_type": "Arbre",
+      "initiate_flow": {
+        "user": "Ajouter un arbre",
+        "reconfigure": "Modifier l'arbre"
+      }
+    }
+  },
   "options": {
     "step": {
       "init": {
-        "title": "Modifier la configuration",
-        "description": "Capteurs Ecowitt, culture surveillée, puis sources de secours optionnelles.",
+        "title": "Réglages du site",
+        "description": "Capteurs, prévisions et alertes. Les arbres se gèrent depuis la page de l'intégration.",
         "data": {
           "temperature_entity": "Capteur de température",
           "humidity_entity": "Capteur d'humidité",
@@ -52,9 +79,8 @@
           "leaf_wetness_entity": "Capteur d'humectation foliaire (optionnel)",
           "weather_entity": "Entité météo pour les prévisions (ex. MeteoSwiss)",
           "enabled_models": "Modèles de risque à activer",
-          "crop": "Culture",
-          "stage": "Stade phénologique actuel",
           "powdery_mildew_rain_penalty": "Oïdium : tenir compte de l'effet inhibiteur de la pluie",
+          "notifications": "Créer des notifications dans Home Assistant",
           "fallback_temperature_entity": "Température de secours (MeteoSwiss)",
           "fallback_humidity_entity": "Humidité de secours (MeteoSwiss)",
           "fallback_wind_speed_entity": "Vent de secours (MeteoSwiss)",
@@ -63,14 +89,25 @@
       }
     }
   },
+  "entity": {
+    "sensor": {
+      "stage": {
+        "name": "Stade phénologique"
+      }
+    }
+  },
   "services": {
     "log_treatment": {
       "name": "Enregistrer un traitement",
-      "description": "Déclare une application de traitement et calcule jusqu'à quand la culture est protégée.",
+      "description": "Déclare une application et calcule jusqu'à quand la culture est protégée.",
       "fields": {
         "target": {
           "name": "Maladie visée",
           "description": "Modèle de risque concerné."
+        },
+        "tree": {
+          "name": "Arbre(s)",
+          "description": "Laisser vide pour tous les arbres concernés."
         },
         "product": {
           "name": "Produit",
@@ -93,12 +130,36 @@
         "target": {
           "name": "Maladie visée",
           "description": "Laisser vide pour tout effacer."
+        },
+        "tree": {
+          "name": "Arbre(s)",
+          "description": "Laisser vide pour tous les arbres."
         }
       }
     },
     "reset_powdery_mildew_index": {
       "name": "Réinitialiser l'indice oïdium",
-      "description": "Remet l'indice Gubler-Thomas à zéro."
+      "description": "Remet l'indice Gubler-Thomas à zéro.",
+      "fields": {
+        "tree": {
+          "name": "Arbre(s)",
+          "description": "Laisser vide pour tous les arbres."
+        }
+      }
+    },
+    "set_stage": {
+      "name": "Définir le stade phénologique",
+      "description": "Force le stade d'un ou plusieurs arbres.",
+      "fields": {
+        "tree": {
+          "name": "Arbre(s)",
+          "description": "Nom du ou des arbres concernés."
+        },
+        "stage": {
+          "name": "Stade",
+          "description": "Clé technique du stade (ex. full_bloom)."
+        }
+      }
     }
   }
 }
