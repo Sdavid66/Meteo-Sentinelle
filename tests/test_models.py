@@ -1,0 +1,420 @@
+"""Tests des modèles agronomiques, exécutables sans Home Assistant.
+
+Les modèles sont des fonctions pures : on peut donc vérifier qu'ils
+reproduisent bien les critères publiés (Hutton, Smith, Gubler-Thomas,
+tables T10/T90) sans instancier Home Assistant.
+
+Lancement : python3 tests/test_models.py
+"""
+from __future__ import annotations
+
+import importlib.util
+import sys
+import types
+from datetime import datetime, timedelta
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+CC = ROOT / "custom_components" / "sentinelle_ecowitt"
+
+
+def _load():
+    """Charge les modules modèles en simulant le package, sans HA."""
+    pkg = types.ModuleType("sentinelle_ecowitt")
+    pkg.__path__ = [str(CC)]
+    sys.modules["sentinelle_ecowitt"] = pkg
+
+    models = types.ModuleType("sentinelle_ecowitt.models")
+    models.__path__ = [str(CC / "models")]
+    sys.modules["sentinelle_ecowitt.models"] = models
+
+    loaded = {}
+    for name in ("const", "models.hourly", "models.crops", "models.frost",
+                 "models.late_blight", "models.powdery_mildew",
+                 "models.treatments"):
+        full = f"sentinelle_ecowitt.{name}"
+        path = CC / (name.replace(".", "/") + ".py")
+        spec = importlib.util.spec_from_file_location(full, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[full] = module
+        spec.loader.exec_module(module)
+        loaded[name] = module
+    return loaded
+
+
+M = _load()
+const = M["const"]
+hourly = M["models.hourly"]
+crops = M["models.crops"]
+frost = M["models.frost"]
+blight = M["models.late_blight"]
+mildew = M["models.powdery_mildew"]
+treatments = M["models.treatments"]
+
+BASE = datetime(2026, 6, 1, 0, 0)
+_checks = 0
+
+
+def check(condition, label):
+    global _checks
+    _checks += 1
+    if not condition:
+        raise AssertionError(f"ÉCHEC : {label}")
+    print(f"  ok  {label}")
+
+
+def make_day(day_offset, temp_profile, humidity_profile, rain=None):
+    """Construit 24 HourlySample. Les profils sont des listes de 24 valeurs."""
+    samples = []
+    for hour in range(24):
+        samples.append(
+            hourly.HourlySample(
+                time=BASE + timedelta(days=day_offset, hours=hour),
+                temp=temp_profile[hour],
+                humidity=humidity_profile[hour],
+                rain_mm=(rain[hour] if rain else 0.0),
+            )
+        )
+    return samples
+
+
+def flat(value):
+    return [value] * 24
+
+
+def wet_for(hours, wet=95.0, dry=60.0, start=0):
+    """Profil d'humidité avec `hours` heures consécutives humides."""
+    profile = [dry] * 24
+    for h in range(start, min(start + hours, 24)):
+        profile[h] = wet
+    return profile
+
+
+# ======================================================================
+print("\n--- hourly : primitives ---")
+# ======================================================================
+
+samples = make_day(0, flat(15.0), wet_for(8))
+check(hourly.longest_run(samples, lambda s: hourly.is_wet(s)) == 8,
+      "longest_run compte 8 heures humides consécutives")
+
+split = wet_for(4, start=0)
+for h in range(6, 11):
+    split[h] = 95.0
+samples_split = make_day(0, flat(15.0), split)
+check(hourly.longest_run(samples_split, lambda s: hourly.is_wet(s)) == 5,
+      "longest_run ne cumule pas deux séries séparées (5, pas 9)")
+check(hourly.count_hours(samples_split, lambda s: hourly.is_wet(s)) == 9,
+      "count_hours cumule bien les heures non consécutives (9)")
+
+# Rééchantillonnage : plusieurs relevés dans la même heure -> moyenne
+raw = [
+    {"time": BASE + timedelta(minutes=5), "temp": 10.0},
+    {"time": BASE + timedelta(minutes=35), "temp": 12.0},
+    {"time": BASE + timedelta(hours=1, minutes=5), "temp": 20.0},
+]
+res = hourly.resample_hourly(raw)
+check(len(res) == 2, "resample_hourly agrège en 2 heures")
+check(abs(res[0].temp - 11.0) < 1e-9, "resample_hourly moyenne 10 et 12 -> 11")
+
+# Réponse thermique : nulle hors bornes, maximale à l'optimum
+check(hourly.beta_response(2.0, 3.0, 20.0, 30.0) == 0.0,
+      "beta_response nulle sous la température minimale")
+check(hourly.beta_response(31.0, 3.0, 20.0, 30.0) == 0.0,
+      "beta_response nulle au-dessus de la maximale")
+check(abs(hourly.beta_response(20.0, 3.0, 20.0, 30.0) - 1.0) < 1e-6,
+      "beta_response vaut 1 à l'optimum")
+check(hourly.beta_response(11.0, 3.0, 20.0, 30.0)
+      < hourly.beta_response(19.0, 3.0, 20.0, 30.0),
+      "beta_response distingue 11 °C de 19 °C (ce qu'un seuil ne fait pas)")
+
+# ======================================================================
+print("\n--- mildiou : Hutton vs Smith ---")
+# ======================================================================
+
+# 2 jours à 7 h humides, T min 12 °C : Hutton OUI (>=6 h), Smith NON (<11 h).
+two_days = []
+for d in range(2):
+    two_days += make_day(d, flat(12.0), wet_for(7))
+r = blight.evaluate_late_blight_risk(two_days)
+check(r.hutton_met is True, "Hutton déclenché à 7 h d'humidité sur 2 jours")
+check(r.smith_met is False, "Smith non déclenché à 7 h (il en exige 11)")
+check(r.level == const.RISK_SEVERE, "niveau severe piloté par Hutton")
+
+# C'est précisément le cas que Smith manquait :
+check(r.hutton_met and not r.smith_met,
+      "cas de sous-détection de Smith correctement capturé")
+
+# 2 jours à 12 h humides : les deux critères sont remplis.
+wet_days = []
+for d in range(2):
+    wet_days += make_day(d, flat(12.0), wet_for(12))
+r2 = blight.evaluate_late_blight_risk(wet_days)
+check(r2.hutton_met and r2.smith_met, "12 h d'humidité : Hutton et Smith remplis")
+
+# Température trop basse : aucun critère, même très humide.
+cold = []
+for d in range(3):
+    cold += make_day(d, flat(8.0), flat(98.0))
+r3 = blight.evaluate_late_blight_risk(cold)
+check(r3.hutton_met is False and r3.level == const.RISK_NONE,
+      "T min 8 °C : pas de risque malgré 100 % d'humidité")
+
+# Une seule journée favorable -> pas severe
+one_day = make_day(0, flat(12.0), wet_for(7)) + make_day(1, flat(12.0), flat(50.0))
+r4 = blight.evaluate_late_blight_risk(one_day)
+check(r4.hutton_consecutive_days == 1, "une seule journée favorable détectée")
+check(r4.level in (const.RISK_WATCH, const.RISK_WARNING),
+      "une journée favorable ne donne pas severe")
+
+# Deux jours favorables non consécutifs -> pas de période
+gap = (make_day(0, flat(12.0), wet_for(7))
+       + make_day(1, flat(12.0), flat(50.0))
+       + make_day(2, flat(12.0), wet_for(7)))
+r5 = blight.evaluate_late_blight_risk(gap)
+check(r5.hutton_met is False,
+      "deux journées favorables séparées ne forment pas une période")
+check(r5.favourable_days == 2, "les deux journées favorables sont comptées")
+
+check(blight.evaluate_late_blight_risk([]).level == const.RISK_NONE,
+      "série vide : aucun risque, pas d'erreur")
+
+# Journée incomplète ignorée (évite un faux négatif de bord d'historique)
+partial = make_day(0, flat(12.0), wet_for(7))[:10]
+check(blight.evaluate_late_blight_risk(partial).evaluated_days == 0,
+      "journée trop partielle écartée de l'évaluation")
+
+# Le capteur d'humectation foliaire prime sur l'humidité relative
+leafy = make_day(0, flat(12.0), flat(40.0))
+for s in leafy[:8]:
+    s.leaf_wet = True
+leafy2 = make_day(1, flat(12.0), flat(40.0))
+for s in leafy2[:8]:
+    s.leaf_wet = True
+r6 = blight.evaluate_late_blight_risk(leafy + leafy2)
+check(r6.hutton_met is True,
+      "humectation foliaire prise en compte même à 40 % d'HR")
+
+# ======================================================================
+print("\n--- oïdium : indice Gubler-Thomas ---")
+# ======================================================================
+
+def optimal_day(offset, hours=8, rain=None, peak=None):
+    """Journée avec `hours` heures continues dans 21,1-29,4 °C."""
+    temps = [15.0] * 24
+    for h in range(hours):
+        temps[h] = 25.0
+    if peak is not None:
+        temps[20] = peak
+    return make_day(offset, temps, flat(50.0), rain)
+
+# Phase d'initiation : 3 journées consécutives -> 60, épidémie lancée
+init = []
+for d in range(3):
+    init += optimal_day(d)
+r = mildew.evaluate_powdery_mildew_risk(init)
+check(r.index == 60, f"3 journées optimales -> indice 60 (obtenu {r.index})")
+check(r.epidemic_started is True, "épidémie déclarée lancée à 60")
+
+# Une journée manquée pendant l'initiation remet à zéro
+broken = optimal_day(0) + make_day(1, flat(15.0), flat(50.0)) + optimal_day(2)
+r = mildew.evaluate_powdery_mildew_risk(broken)
+check(r.index == 20, f"remise à zéro puis +20 -> 20 (obtenu {r.index})")
+check(r.epidemic_started is False, "épidémie non lancée si l'initiation est cassée")
+
+# Phase de suivi : +20 par journée favorable
+r = mildew.evaluate_powdery_mildew_risk(
+    optimal_day(10), index=60, epidemic_started=True)
+check(r.index == 80, f"suivi : +20 -> 80 (obtenu {r.index})")
+
+# Journée défavorable : -10
+r = mildew.evaluate_powdery_mildew_risk(
+    make_day(10, flat(15.0), flat(50.0)), index=60, epidemic_started=True)
+check(r.index == 50, f"journée défavorable : -10 -> 50 (obtenu {r.index})")
+
+# Pic léthal seul (>=35 °C) : -10
+hot = make_day(10, flat(15.0), flat(50.0))
+hot[20].temp = 36.0
+r = mildew.evaluate_powdery_mildew_risk(hot, index=60, epidemic_started=True)
+check(r.index == 50, f"pic à 36 °C : -10 -> 50 (obtenu {r.index})")
+
+# Plage favorable ET pic léthal : +10 net
+r = mildew.evaluate_powdery_mildew_risk(
+    optimal_day(10, peak=36.0), index=60, epidemic_started=True)
+check(r.index == 70, f"favorable + pic léthal : +10 -> 70 (obtenu {r.index})")
+
+# Bornes 0 et 100
+r = mildew.evaluate_powdery_mildew_risk(
+    optimal_day(10), index=95, epidemic_started=True)
+check(r.index == 100, "indice plafonné à 100")
+r = mildew.evaluate_powdery_mildew_risk(
+    make_day(10, flat(15.0), flat(50.0)), index=5, epidemic_started=True)
+check(r.index == 0, "indice plancher à 0")
+
+# Correction pluie : l'eau libre inhibe l'oïdium
+rainy = [0.0] * 24
+rainy[12] = 4.0
+r_rain = mildew.evaluate_powdery_mildew_risk(
+    optimal_day(10, rain=rainy), index=60, epidemic_started=True,
+    apply_rain_penalty=True)
+r_dry = mildew.evaluate_powdery_mildew_risk(
+    optimal_day(10), index=60, epidemic_started=True, apply_rain_penalty=True)
+check(r_rain.index < r_dry.index,
+      f"pluie pénalise l'indice ({r_rain.index} < {r_dry.index})")
+check(r_rain.index == 70, f"4 mm de pluie : +20-10 -> 70 (obtenu {r_rain.index})")
+
+# La pénalité est désactivable
+r_off = mildew.evaluate_powdery_mildew_risk(
+    optimal_day(10, rain=rainy), index=60, epidemic_started=True,
+    apply_rain_penalty=False)
+check(r_off.index == 80, "pénalité pluie désactivable")
+
+# Idempotence : une journée déjà intégrée n'est pas recomptée
+day = optimal_day(10)
+first = mildew.evaluate_powdery_mildew_risk(day, index=60, epidemic_started=True)
+second = mildew.evaluate_powdery_mildew_risk(
+    day, index=first.index, epidemic_started=True,
+    last_processed_day=first.last_processed_day)
+check(second.index == first.index,
+      "journée déjà traitée non recomptée (indice cumulatif stable)")
+
+# Bandes de risque
+check(mildew.risk_level(20, True) == const.RISK_NONE, "indice 20 -> aucun risque")
+check(mildew.risk_level(50, True) == const.RISK_WATCH, "indice 50 -> à surveiller")
+check(mildew.risk_level(70, True) == const.RISK_WARNING, "indice 70 -> alerte")
+check(mildew.risk_level(90, True) == const.RISK_SEVERE, "indice 90 -> sévère")
+check(mildew.spray_interval(80) == 14, "indice > 60 -> intervalle 14 jours")
+check(mildew.spray_interval(30) == 21, "indice bas -> intervalle 21 jours")
+
+# ======================================================================
+print("\n--- gel : seuils phénologiques ---")
+# ======================================================================
+
+def fc(temps, start=20):
+    return [(BASE + timedelta(hours=start + i), t) for i, t in enumerate(temps)]
+
+# Table WSU : pommier en pleine floraison, T10 = -2,2 / T90 = -3,9
+t10, t90 = crops.thresholds("apple", "full_bloom")
+check(abs(t10 - (-2.2)) < 0.05 and abs(t90 - (-3.9)) < 0.05,
+      "table WSU pommier pleine floraison : T10 -2,2 / T90 -3,9 °C")
+
+# Le même -3 °C : anodin en dormance, grave en floraison
+cold = fc([2, 0, -3, -1])
+dormant = frost.evaluate_frost_risk(3, 70, 15, 80, cold, "apple", "silver_tip")
+bloom = frost.evaluate_frost_risk(3, 70, 15, 80, cold, "apple", "full_bloom")
+check(dormant.level == const.RISK_NONE,
+      "-3 °C sans risque au stade pointe argentée (T10 -9,4 °C)")
+check(bloom.level == const.RISK_WARNING,
+      "-3 °C en alerte en pleine floraison (sous T10)")
+check(dormant.level != bloom.level,
+      "le stade change le diagnostic à température identique")
+
+# Sous T90 : perte massive
+severe = frost.evaluate_frost_risk(3, 70, 15, 80, fc([0, -5, -2]),
+                                   "apple", "full_bloom")
+check(severe.level == const.RISK_SEVERE, "-5 °C en floraison : perte massive")
+check(severe.expected_damage == "severe_loss", "dégâts qualifiés de massifs")
+
+# Juste au-dessus de T10 : vigilance
+near = frost.evaluate_frost_risk(3, 70, 15, 80, fc([1, -1, 0]),
+                                 "apple", "full_bloom")
+check(near.level == const.RISK_WATCH, "-1 °C en floraison : vigilance")
+
+# Refroidissement radiatif : ciel dégagé + vent nul
+clear_calm = frost.radiative_offset(0, 0)
+overcast_windy = frost.radiative_offset(100, 30)
+check(abs(clear_calm - 5.0) < 1e-9, "ciel dégagé, vent nul : écart de 5 °C")
+check(overcast_windy == 0.0, "ciel couvert et vent fort : écart nul")
+check(frost.radiative_offset(0, 10) < clear_calm, "le vent réduit l'écart")
+
+# Gelée blanche : +2 °C dans l'air, mais 0 °C au sol
+ground = frost.evaluate_frost_risk(4, 80, 0, 0, fc([5, 3, 2]),
+                                   "tender_annual", "growing")
+check(ground.reference == "surface",
+      "culture basse évaluée sur la température de surface")
+check(ground.air_min == 2 and ground.surface_min is not None
+      and ground.surface_min < 0,
+      f"air +2 °C mais surface {ground.surface_min} °C")
+check(ground.level != const.RISK_NONE,
+      "gelée blanche détectée alors que l'air reste positif")
+
+# Un arbre au même moment est jugé sur l'air, pas sur le sol
+tree = frost.evaluate_frost_risk(4, 80, 0, 0, fc([5, 3, 2]),
+                                 "apple", "full_bloom")
+check(tree.reference == "air", "arbre évalué sur la température de l'air")
+
+# Culture générique : comportement historique conservé
+generic = frost.evaluate_frost_risk(4, 70, 20, 90, fc([5, 3, 1, -3, -5]))
+check(generic.level == const.RISK_SEVERE, "culture générique : seuils fixes")
+check(generic.t10 is None, "culture générique : pas de seuil phénologique")
+
+# Robustesse : aucune donnée
+empty = frost.evaluate_frost_risk(None, None, None, None, [])
+check(empty.level == const.RISK_NONE, "absence totale de données : pas d'erreur")
+
+# Point de rosée cohérent (saturation -> point de rosée = température)
+check(abs(frost.dew_point(20.0, 100.0) - 20.0) < 0.3,
+      "point de rosée à 100 % d'HR ≈ température de l'air")
+check(frost.dew_point(20.0, 50.0) < 20.0, "point de rosée < température si HR < 100 %")
+
+# Stade inconnu : on retient le stade le plus sensible (choix prudent)
+unknown = crops.thresholds("apple", "stade_inexistant")
+check(unknown == min(crops.CROPS["apple"].stages.values(), key=lambda t: t[0]),
+      "stade inconnu : repli sur le stade le plus sensible")
+
+# ======================================================================
+print("\n--- traitements : protégé jusqu'à ---")
+# ======================================================================
+
+now = datetime(2026, 6, 10, 12, 0)
+t = treatments.Treatment(target="late_blight", product="Bouillie",
+                         applied_at=now - timedelta(days=2),
+                         residual_days=7, rainfast_mm=20)
+check(t.is_active(now), "traitement de 7 j appliqué il y a 2 j : actif")
+check(abs(t.remaining_hours(now) - 120) < 1e-6, "120 h de protection restantes")
+
+expired = treatments.Treatment(target="late_blight", product="X",
+                               applied_at=now - timedelta(days=10),
+                               residual_days=7)
+check(not expired.is_active(now), "rémanence écoulée : protection terminée")
+check(expired.status(now) == "expired", "statut « expired »")
+
+washed = treatments.Treatment(target="late_blight", product="X",
+                              applied_at=now - timedelta(days=1),
+                              residual_days=7, rainfast_mm=20)
+washed.add_rain(25)
+check(washed.washed_off, "25 mm > 20 mm : produit lessivé")
+check(not washed.is_active(now), "lessivage annule la protection avant l'échéance")
+check(washed.status(now) == "washed_off", "statut « washed_off »")
+
+no_wash = treatments.Treatment(target="x", product="y", applied_at=now,
+                               residual_days=7, rainfast_mm=0)
+no_wash.add_rain(200)
+check(not no_wash.washed_off, "rainfast_mm = 0 désactive le lessivage")
+
+# Rétrogradation du niveau sous protection
+check(treatments.adjusted_level(const.RISK_SEVERE, t, now) == const.RISK_WARNING,
+      "sous protection, severe rétrogradé en warning")
+check(treatments.adjusted_level(const.RISK_WARNING, t, now) == const.RISK_WATCH,
+      "sous protection, warning rétrogradé en watch")
+check(treatments.adjusted_level(const.RISK_SEVERE, None, now) == const.RISK_SEVERE,
+      "sans traitement, le niveau est inchangé")
+check(treatments.adjusted_level(const.RISK_SEVERE, expired, now) == const.RISK_SEVERE,
+      "traitement expiré : plus de rétrogradation")
+check(treatments.adjusted_level(const.RISK_WATCH, t, now) == const.RISK_WATCH,
+      "la rétrogradation ne descend jamais sous watch")
+
+state = treatments.protection_state(t, now)
+check(state["status"] == "protected", "état exposé : protected")
+check(state["protected_until"] is not None, "échéance « protégé jusqu'à » fournie")
+check(treatments.protection_state(None, now)["status"] == "none",
+      "aucun traitement : statut none")
+
+# Aller-retour de sérialisation (persistance entre redémarrages)
+restored = treatments.Treatment.from_dict(t.to_dict())
+check(restored is not None and restored.applied_at == t.applied_at,
+      "sérialisation/désérialisation fidèle")
+check(treatments.Treatment.from_dict({"bogus": 1}) is None,
+      "données corrompues : rejet propre sans exception")
+
+print(f"\n=== {_checks} vérifications passées ===")

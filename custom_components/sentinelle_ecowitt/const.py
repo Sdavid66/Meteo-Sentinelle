@@ -22,6 +22,13 @@ CONF_WEATHER_ENTITY = "weather_entity"
 
 CONF_ENABLED_MODELS = "enabled_models"
 
+# --- Culture surveillée (seuils de gel phénologiques) ---
+CONF_CROP = "crop"
+CONF_STAGE = "stage"
+
+# --- Oïdium : extension pluie hors Gubler-Thomas d'origine ---
+CONF_RAIN_PENALTY = "powdery_mildew_rain_penalty"
+
 # Correspondance mesure -> (entité primaire, entité de secours).
 MEASUREMENT_SOURCES = {
     "temperature": (CONF_TEMP_ENTITY, CONF_FALLBACK_TEMP_ENTITY),
@@ -43,8 +50,13 @@ MODEL_POWDERY_MILDEW = "powdery_mildew"
 AVAILABLE_MODELS = [MODEL_FROST, MODEL_LATE_BLIGHT, MODEL_POWDERY_MILDEW]
 DEFAULT_ENABLED_MODELS = [MODEL_FROST]
 
+#: Modèles pouvant faire l'objet d'un traitement phytosanitaire.
+TREATABLE_MODELS = [MODEL_LATE_BLIGHT, MODEL_POWDERY_MILDEW]
+
 DEFAULT_NAME = "Sentinelle"
 DEFAULT_UPDATE_INTERVAL_MINUTES = 15
+#: Profondeur d'historique interrogée pour les modèles maladie.
+HISTORY_HOURS = 96
 
 # Niveaux de risque partagés par tous les modèles.
 RISK_NONE = "none"
@@ -52,3 +64,16 @@ RISK_WATCH = "watch"
 RISK_WARNING = "warning"
 RISK_SEVERE = "severe"
 RISK_LEVELS = [RISK_NONE, RISK_WATCH, RISK_WARNING, RISK_SEVERE]
+
+# --- Services ---
+SERVICE_LOG_TREATMENT = "log_treatment"
+SERVICE_CLEAR_TREATMENT = "clear_treatment"
+SERVICE_RESET_MILDEW_INDEX = "reset_powdery_mildew_index"
+
+ATTR_TARGET = "target"
+ATTR_PRODUCT = "product"
+ATTR_RESIDUAL_DAYS = "residual_days"
+ATTR_RAINFAST_MM = "rainfast_mm"
+
+STORAGE_VERSION = 1
+STORAGE_KEY = f"{DOMAIN}.state"

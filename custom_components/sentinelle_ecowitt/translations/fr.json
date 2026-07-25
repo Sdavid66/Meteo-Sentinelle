@@ -9,10 +9,19 @@
           "temperature_entity": "Capteur de température",
           "humidity_entity": "Capteur d'humidité",
           "wind_speed_entity": "Capteur de vent (optionnel)",
-          "rain_rate_entity": "Capteur de pluie (optionnel)",
+          "rain_rate_entity": "Capteur d'intensité de pluie, en mm/h (optionnel)",
           "leaf_wetness_entity": "Capteur d'humectation foliaire (optionnel)",
           "weather_entity": "Entité météo pour les prévisions (ex. MeteoSwiss)",
           "enabled_models": "Modèles de risque à activer"
+        }
+      },
+      "crop": {
+        "title": "Culture surveillée",
+        "description": "Le seuil de gel dépend de la culture et de son stade : un pommier supporte -18 °C en dormance mais souffre dès -2 °C en pleine floraison. Choisissez votre culture pour que les alertes utilisent les températures critiques réelles (tables T10/T90 de Washington State University). Le stade se change ensuite à tout moment depuis l'entité « Stade phénologique ».",
+        "data": {
+          "crop": "Culture",
+          "stage": "Stade phénologique actuel",
+          "powdery_mildew_rain_penalty": "Oïdium : tenir compte de l'effet inhibiteur de la pluie"
         }
       },
       "fallback": {
@@ -34,21 +43,62 @@
     "step": {
       "init": {
         "title": "Modifier la configuration",
-        "description": "Capteurs de votre station Ecowitt, puis sources de secours optionnelles (MeteoSwiss).",
+        "description": "Capteurs Ecowitt, culture surveillée, puis sources de secours optionnelles.",
         "data": {
           "temperature_entity": "Capteur de température",
           "humidity_entity": "Capteur d'humidité",
           "wind_speed_entity": "Capteur de vent (optionnel)",
-          "rain_rate_entity": "Capteur de pluie (optionnel)",
+          "rain_rate_entity": "Capteur d'intensité de pluie, en mm/h (optionnel)",
           "leaf_wetness_entity": "Capteur d'humectation foliaire (optionnel)",
           "weather_entity": "Entité météo pour les prévisions (ex. MeteoSwiss)",
           "enabled_models": "Modèles de risque à activer",
+          "crop": "Culture",
+          "stage": "Stade phénologique actuel",
+          "powdery_mildew_rain_penalty": "Oïdium : tenir compte de l'effet inhibiteur de la pluie",
           "fallback_temperature_entity": "Température de secours (MeteoSwiss)",
           "fallback_humidity_entity": "Humidité de secours (MeteoSwiss)",
           "fallback_wind_speed_entity": "Vent de secours (MeteoSwiss)",
           "fallback_rain_rate_entity": "Pluie de secours (MeteoSwiss)"
         }
       }
+    }
+  },
+  "services": {
+    "log_treatment": {
+      "name": "Enregistrer un traitement",
+      "description": "Déclare une application de traitement et calcule jusqu'à quand la culture est protégée.",
+      "fields": {
+        "target": {
+          "name": "Maladie visée",
+          "description": "Modèle de risque concerné."
+        },
+        "product": {
+          "name": "Produit",
+          "description": "Nom du produit appliqué."
+        },
+        "residual_days": {
+          "name": "Rémanence (jours)",
+          "description": "Durée de protection indiquée par le fabricant."
+        },
+        "rainfast_mm": {
+          "name": "Lessivage (mm)",
+          "description": "Cumul de pluie annulant la protection."
+        }
+      }
+    },
+    "clear_treatment": {
+      "name": "Effacer un traitement",
+      "description": "Supprime le traitement enregistré.",
+      "fields": {
+        "target": {
+          "name": "Maladie visée",
+          "description": "Laisser vide pour tout effacer."
+        }
+      }
+    },
+    "reset_powdery_mildew_index": {
+      "name": "Réinitialiser l'indice oïdium",
+      "description": "Remet l'indice Gubler-Thomas à zéro."
     }
   }
 }

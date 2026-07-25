@@ -9,6 +9,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     AVAILABLE_MODELS,
+    CONF_CROP,
     CONF_ENABLED_MODELS,
     CONF_FALLBACK_HUMIDITY_ENTITY,
     CONF_FALLBACK_RAIN_ENTITY,
@@ -17,6 +18,8 @@ from .const import (
     CONF_HUMIDITY_ENTITY,
     CONF_LEAF_WETNESS_ENTITY,
     CONF_RAIN_ENTITY,
+    CONF_RAIN_PENALTY,
+    CONF_STAGE,
     CONF_TEMP_ENTITY,
     CONF_WEATHER_ENTITY,
     CONF_WIND_ENTITY,
@@ -27,11 +30,12 @@ from .const import (
     MODEL_LATE_BLIGHT,
     MODEL_POWDERY_MILDEW,
 )
+from .models.crops import GENERIC_CROP, crop_options, stage_options
 
 MODEL_LABELS = {
-    MODEL_FROST: "Risque de gel",
-    MODEL_LATE_BLIGHT: "Mildiou (modèle Smith simplifié)",
-    MODEL_POWDERY_MILDEW: "Oïdium",
+    MODEL_FROST: "Risque de gel (seuils phénologiques)",
+    MODEL_LATE_BLIGHT: "Mildiou (Hutton + Smith)",
+    MODEL_POWDERY_MILDEW: "Oïdium (indice Gubler-Thomas)",
 }
 
 
@@ -91,12 +95,47 @@ def _ecowitt_schema(defaults: dict | None = None) -> dict:
     return schema
 
 
-def _fallback_schema(defaults: dict | None = None) -> dict:
-    """Capteurs temps réel d'une station officielle (ex. MeteoSwiss).
+def _crop_schema(defaults: dict | None = None) -> dict:
+    """Culture surveillée : détermine les seuils de gel appliqués."""
+    defaults = defaults or {}
+    crop = defaults.get(CONF_CROP, GENERIC_CROP)
 
-    Tous facultatifs : ils servent uniquement de secours quand la mesure
-    Ecowitt correspondante est absente ou indisponible.
-    """
+    schema: dict = {
+        vol.Required(CONF_CROP, default=crop): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    selector.SelectOptionDict(value=key, label=label)
+                    for key, label in crop_options()
+                ],
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+    }
+
+    stages = stage_options(crop)
+    if stages:
+        default_stage = defaults.get(CONF_STAGE) or stages[0][0]
+        schema[
+            vol.Optional(CONF_STAGE, default=default_stage)
+        ] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    selector.SelectOptionDict(value=key, label=label)
+                    for key, label in stages
+                ],
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+
+    schema[
+        vol.Required(CONF_RAIN_PENALTY, default=defaults.get(CONF_RAIN_PENALTY, True))
+    ] = selector.BooleanSelector()
+
+    return schema
+
+
+def _fallback_schema(defaults: dict | None = None) -> dict:
+    """Capteurs temps réel d'une station officielle (ex. MeteoSwiss)."""
     defaults = defaults or {}
     schema: dict = {}
     for key, kwargs in (
@@ -111,9 +150,9 @@ def _fallback_schema(defaults: dict | None = None) -> dict:
 
 
 class SentinelleEcowittConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Flux de configuration en deux étapes : station perso, puis secours."""
+    """Flux en trois étapes : capteurs, culture, sources de secours."""
 
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self) -> None:
         self._data: dict = {}
@@ -124,12 +163,30 @@ class SentinelleEcowittConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(f"{DOMAIN}_{name}")
             self._abort_if_unique_id_configured()
             self._data = {"name": name, **user_input}
-            return await self.async_step_fallback()
+            return await self.async_step_crop()
 
         schema = vol.Schema(
             {vol.Required("name", default=DEFAULT_NAME): str, **_ecowitt_schema()}
         )
         return self.async_show_form(step_id="user", data_schema=schema)
+
+    async def async_step_crop(self, user_input: dict | None = None):
+        """Culture et stade phénologique de départ."""
+        if user_input is not None:
+            self._data.update(user_input)
+            # Le choix de la culture change la liste des stades : si
+            # l'utilisateur en a sélectionné une sans que le formulaire
+            # ait pu proposer les stades correspondants, on redemande.
+            crop = user_input.get(CONF_CROP, GENERIC_CROP)
+            if stage_options(crop) and CONF_STAGE not in user_input:
+                return self.async_show_form(
+                    step_id="crop", data_schema=vol.Schema(_crop_schema(self._data))
+                )
+            return await self.async_step_fallback()
+
+        return self.async_show_form(
+            step_id="crop", data_schema=vol.Schema(_crop_schema())
+        )
 
     async def async_step_fallback(self, user_input: dict | None = None):
         """Étape facultative : sources de secours (MeteoSwiss ou autre)."""
@@ -150,7 +207,7 @@ class SentinelleEcowittConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class SentinelleEcowittOptionsFlow(config_entries.OptionsFlow):
-    """Permet de changer les entités / modèles activés après coup."""
+    """Permet de tout revoir après coup."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self.config_entry = config_entry
@@ -161,6 +218,10 @@ class SentinelleEcowittOptionsFlow(config_entries.OptionsFlow):
 
         current = {**self.config_entry.data, **self.config_entry.options}
         schema = vol.Schema(
-            {**_ecowitt_schema(current), **_fallback_schema(current)}
+            {
+                **_ecowitt_schema(current),
+                **_crop_schema(current),
+                **_fallback_schema(current),
+            }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

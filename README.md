@@ -11,7 +11,7 @@ Assistant, combinés aux prévisions météo.
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20the%20project-orange?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/sdavid66)
 ![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)
-![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)
 
 ## Pourquoi
 
@@ -85,6 +85,10 @@ quelle autre source de capteurs Home Assistant peut servir de secours.
   foliaire (ex. Ecowitt WH55).
 - (Optionnel) l'intégration MeteoSwiss, pour servir de source de
   secours si un capteur Ecowitt tombe en panne.
+- Le **recorder** actif sur vos capteurs de température et d'humidité :
+  les modèles maladie ont besoin d'environ 4 jours d'historique horaire.
+  Si vous excluez ces entités du recorder, seul le modèle de gel
+  fonctionnera.
 
 ## Installation via HACS
 
@@ -97,15 +101,19 @@ quelle autre source de capteurs Home Assistant peut servir de secours.
 
 ## Configuration
 
-La configuration se fait en deux étapes.
+La configuration se fait en trois étapes.
 
 **Étape 1 — votre station Ecowitt :**
 - le capteur de température et d'humidité de votre station ;
-- (optionnel) vent, pluie, humectation foliaire ;
+- (optionnel) vent, intensité de pluie (mm/h), humectation foliaire ;
 - l'entité météo à utiliser pour les prévisions (ex. MeteoSwiss) ;
 - les modèles de risque à activer.
 
-**Étape 2 — sources de secours (facultatif) :**
+**Étape 2 — culture surveillée :**
+- la culture (détermine les seuils de gel T10/T90) et son stade actuel ;
+- la prise en compte de l'effet inhibiteur de la pluie sur l'oïdium.
+
+**Étape 3 — sources de secours (facultatif) :**
 - les capteurs temps réel MeteoSwiss (température, humidité, vent,
   pluie) qui prendront le relais en cas de panne.
 
@@ -114,27 +122,127 @@ l'intégration.
 
 ## Modèles de risque
 
-| Modèle | Principe | Statut |
-|---|---|---|
-| Gel / gelée | Température prévue + point de rosée + vent + couverture nuageuse (refroidissement radiatif) | ✅ |
-| Mildiou | "Smith Period" simplifiée : 2 jours consécutifs avec ≥11h d'humidité ≥90 % et température min ≥10 °C | ✅ |
-| Oïdium | Journées chaudes (21-30 °C) + nuits humides (≥90 % HR) | ✅ (indicatif, séparation jour/nuit à affiner) |
+Tous les modèles travaillent sur des **séries horaires** reconstruites
+depuis l'historique de Home Assistant, comme l'exigent les critères
+publiés (« 6 heures continues », « 11 heures à HR ≥ 90 % »).
 
-Ces modèles sont **indicatifs** : ils reproduisent des méthodes
-agronomiques connues sous une forme simplifiée, mais ne remplacent pas
-un avis phytosanitaire professionnel.
+### Gel — seuils phénologiques
+
+Il n'existe pas *un* seuil de gel. Un pommier supporte −18 °C en
+dormance et souffre dès −2,2 °C en pleine floraison. L'intégration
+utilise les tables **T10 / T90** de Washington State University
+(températures provoquant 10 % et 90 % de mortalité des bourgeons après
+30 min d'exposition), pour pommier, poirier, abricotier, prunier,
+pêcher/nectarinier et cerisier doux.
+
+Vous choisissez la culture à la configuration ; le **stade
+phénologique** se change ensuite à tout moment depuis l'entité
+`select.…_stade_phenologique` — utile pour l'automatiser ou l'ajuster
+en observant le verger.
+
+L'intégration estime aussi la **température de surface** : sous ciel
+dégagé et vent faible, le rayonnement nocturne refroidit le sol de 3 à
+5 °C sous la température de l'air. Une gelée blanche survient donc
+couramment alors que l'abri affiche encore +2 °C. Les cultures basses
+(tomate, pomme de terre, légumes) sont évaluées sur cette température
+de surface, les arbres sur celle de l'air.
+
+### Mildiou — critères de Hutton *et* Smith Period
+
+Deux critères sont calculés en parallèle :
+
+| Critère | Condition | Origine |
+|---|---|---|
+| **Hutton** | 2 jours consécutifs, T min ≥ 10 °C, **≥ 6 h** continues à HR ≥ 90 % | James Hutton Institute / AHDB, 2017 |
+| **Smith** | 2 jours consécutifs, T min ≥ 10 °C, **≥ 11 h** continues à HR ≥ 90 % | Smith, 1956 |
+
+Le niveau de risque suit **Hutton**, plus sensible. Les essais en
+enceinte climatique ayant conduit à ces critères ont montré que les
+isolats contemporains de *Phytophthora infestans* infectent dans des
+conditions nettement moins humides que ne le prévoyait Smith : cette
+dernière sous-détecte les génotypes agressifs modernes. Elle reste
+exposée en attribut, pour comparaison.
+
+Un capteur d'humectation foliaire, si vous en avez un, remplace le
+proxy HR ≥ 90 %.
+
+### Oïdium — indice Gubler-Thomas
+
+Indice cumulatif 0-100 développé à UC Davis, qui pilote l'espacement
+des traitements. L'épidémie démarre après 3 journées consécutives
+comptant ≥ 6 h continues entre 21,1 et 29,4 °C ; ensuite l'indice gagne
+20 points par journée favorable, en perd 10 par journée défavorable ou
+par pic à ≥ 35 °C (léthal pour les conidies).
+
+Bandes publiées : 0-30 faible, 40-60 modéré, > 60 élevé — avec un
+intervalle de traitement conseillé exposé en attribut.
+
+**Correction ajoutée par ce plugin :** contrairement au mildiou,
+l'oïdium est *inhibé* par l'eau libre — la pluie lessive les conidies.
+Le Gubler-Thomas d'origine ne modélise pas la pluie ; on applique donc
+une pénalité de −10 points au-delà de 2,5 mm journaliers, en reprenant
+la règle du modèle « Hop Powdery Mildew » (variante Cascade), lui-même
+dérivé de Gubler-Thomas. Désactivable dans les options.
+
+### Suivi des traitements — « protégé jusqu'à »
+
+Un modèle dit « le risque est élevé ». Un outil de décision dit
+« traitez avant jeudi ». Le service `sentinelle_ecowitt.log_treatment`
+enregistre une application :
+
+```yaml
+action: sentinelle_ecowitt.log_treatment
+data:
+  target: late_blight
+  product: Bouillie bordelaise
+  residual_days: 10
+  rainfast_mm: 20
+```
+
+L'intégration en déduit une entité **Protection mildiou / oïdium**
+donnant la date de fin de protection, en tenant compte de la rémanence
+**et du lessivage** : au-delà du cumul de pluie déclaré, la protection
+est considérée comme perdue même si la rémanence n'est pas écoulée.
+Tant qu'une protection est active, le niveau de risque affiché est
+rétrogradé d'un cran.
+
+Aucune base de produits n'est embarquée : renseignez rémanence et
+résistance au lavage d'après l'étiquette de ce que vous appliquez.
+
+### Limites assumées
+
+Ces modèles reproduisent fidèlement des critères publiés, mais restent
+en deçà d'un outil professionnel sur trois points :
+
+- **l'inoculum n'est pas modélisé** — trois jours humides en avril sans
+  foyer à proximité sont inoffensifs ; les mêmes après une déclaration
+  chez le voisin sont critiques. Sans réseau de surveillance régional,
+  ces modèles supposent le pathogène présent et alertent donc parfois
+  pour rien ;
+- **pas de suivi de cohortes d'infection** (latence, sortie des
+  lésions) ;
+- **aucune validation au champ** — les modèles experts sont calibrés
+  sur des essais multi-années et multi-régions.
+
+À utiliser comme aide à la vigilance, pas comme avis phytosanitaire.
+
+### Sources
+
+- Critères de Hutton — [AHDB / James Hutton Institute](https://potatoes.ahdb.org.uk/development-and-implementation-of-a-new-national-warning-system-for-potato-late-blight-in-great-britain-hutton-criteria)
+- Indice Gubler-Thomas — [UC IPM, Gubler *et al.* 1999](https://uspest.org/npdn/riskdoc.html)
+- Températures critiques T10/T90 — [WSU, publié par USU Extension IPM-012-11](https://extension.usu.edu/productionhort/files/CriticalTemperaturesFrostDamageFruitTrees.pdf)
 
 ## Feuille de route
 
-- **v0.2 (actuelle)** : support MeteoSwiss en prévisions et en secours
-  automatique, entité « Source des données ».
-- v0.3 : séparation jour/nuit correcte pour l'oïdium, ajout tavelure
-  (pommier), historique de risque (graphique).
-- v0.4 : prévisions multi-jours affinées (agrégation de plusieurs
-  sources météo), notifications intégrées, blueprint d'automatisation
-  prêt à l'emploi.
-- v0.5 : profils "culture" (potager, verger, vigne...) avec seuils
-  adaptés par plante.
+- **v0.3 (actuelle)** : critères de Hutton, indice Gubler-Thomas,
+  seuils de gel phénologiques T10/T90, température de surface, suivi
+  des traitements.
+- v0.4 : tavelure du pommier (table de Mills), cohortes d'infection
+  avec latence pour le mildiou, historique de risque graphable.
+- v0.5 : agrégation de plusieurs sources météo, notifications
+  intégrées, blueprint d'automatisation prêt à l'emploi.
+- v0.6 : avancement automatique du stade phénologique par cumul de
+  degrés-jours, sensibilité variétale.
 
 Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le détail des choix de
 conception.

@@ -9,10 +9,19 @@
           "temperature_entity": "Temperature sensor",
           "humidity_entity": "Humidity sensor",
           "wind_speed_entity": "Wind speed sensor (optional)",
-          "rain_rate_entity": "Rain sensor (optional)",
+          "rain_rate_entity": "Rain rate sensor, in mm/h (optional)",
           "leaf_wetness_entity": "Leaf wetness sensor (optional)",
           "weather_entity": "Weather entity for forecasts (e.g. MeteoSwiss)",
           "enabled_models": "Risk models to enable"
+        }
+      },
+      "crop": {
+        "title": "Monitored crop",
+        "description": "Frost thresholds depend on the crop and its stage: an apple tree tolerates -18 °C when dormant but is damaged at -2 °C in full bloom. Pick your crop so alerts use real critical temperatures (Washington State University T10/T90 tables). The stage can then be changed at any time from the \"Phenological stage\" entity.",
+        "data": {
+          "crop": "Crop",
+          "stage": "Current phenological stage",
+          "powdery_mildew_rain_penalty": "Powdery mildew: account for the inhibiting effect of rain"
         }
       },
       "fallback": {
@@ -34,21 +43,62 @@
     "step": {
       "init": {
         "title": "Update configuration",
-        "description": "Sensors from your Ecowitt station, then optional backup sources (MeteoSwiss).",
+        "description": "Ecowitt sensors, monitored crop, then optional backup sources.",
         "data": {
           "temperature_entity": "Temperature sensor",
           "humidity_entity": "Humidity sensor",
           "wind_speed_entity": "Wind speed sensor (optional)",
-          "rain_rate_entity": "Rain sensor (optional)",
+          "rain_rate_entity": "Rain rate sensor, in mm/h (optional)",
           "leaf_wetness_entity": "Leaf wetness sensor (optional)",
           "weather_entity": "Weather entity for forecasts (e.g. MeteoSwiss)",
           "enabled_models": "Risk models to enable",
+          "crop": "Crop",
+          "stage": "Current phenological stage",
+          "powdery_mildew_rain_penalty": "Powdery mildew: account for the inhibiting effect of rain",
           "fallback_temperature_entity": "Backup temperature (MeteoSwiss)",
           "fallback_humidity_entity": "Backup humidity (MeteoSwiss)",
           "fallback_wind_speed_entity": "Backup wind speed (MeteoSwiss)",
           "fallback_rain_rate_entity": "Backup rain (MeteoSwiss)"
         }
       }
+    }
+  },
+  "services": {
+    "log_treatment": {
+      "name": "Log a treatment",
+      "description": "Records a spray application and works out how long the crop stays protected.",
+      "fields": {
+        "target": {
+          "name": "Target disease",
+          "description": "Risk model concerned."
+        },
+        "product": {
+          "name": "Product",
+          "description": "Name of the product applied."
+        },
+        "residual_days": {
+          "name": "Residual (days)",
+          "description": "Protection duration stated by the manufacturer."
+        },
+        "rainfast_mm": {
+          "name": "Wash-off (mm)",
+          "description": "Cumulative rainfall that voids protection."
+        }
+      }
+    },
+    "clear_treatment": {
+      "name": "Clear a treatment",
+      "description": "Removes the recorded treatment.",
+      "fields": {
+        "target": {
+          "name": "Target disease",
+          "description": "Leave empty to clear all."
+        }
+      }
+    },
+    "reset_powdery_mildew_index": {
+      "name": "Reset powdery mildew index",
+      "description": "Sets the Gubler-Thomas index back to zero."
     }
   }
 }

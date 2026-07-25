@@ -133,6 +133,73 @@ documentation. C'est la pratique standard des projets HACS pour rester
 conforme aux règles du dépôt par défaut HACS (pas de monétisation
 intrusive dans le produit).
 
+### 5 bis. Passage aux modèles horaires et aux critères publiés (v0.3)
+
+La v0.1 testait des seuils sur des agrégats journaliers. C'était un
+drapeau « conditions favorables », pas un modèle. La v0.3 remplace ce
+socle.
+
+**Séries horaires (`models/hourly.py`).** Les critères publiés sont
+définis en heures *continues* : « 6 heures entre 21 et 30 °C », « 11 h
+à HR ≥ 90 % ». Les états du recorder arrivent à intervalle irrégulier ;
+`resample_hourly` les agrège en pas horaires, `longest_run` compte les
+séries consécutives (une série interrompue ne compte pas, ce qui est le
+comportement prudent). `complete_days` écarte les journées trop
+partielles, qui produiraient de faux négatifs en bord d'historique.
+
+**Réponse thermique continue.** `beta_response` remplace les seuils
+binaires par une courbe de type Bêta (Analytis) définie par ses
+températures cardinales. Un test « T ≥ 10 °C » traite identiquement
+11 °C et 20 °C alors que l'écart biologique est considérable ; la courbe
+les distingue. Elle sert de pondération de la pression d'infection, pas
+de critère de déclenchement — les critères restent ceux publiés, pour
+rester comparables aux avertissements officiels.
+
+**Hutton en plus de Smith.** Le niveau de risque mildiou suit désormais
+les critères de Hutton (6 h) et non la Smith Period (11 h). Les deux
+sont calculés et exposés : Smith reste utile pour comparer avec les
+bulletins historiques, mais elle sous-détecte les génotypes agressifs
+actuels. Choix : piloter par le critère le plus sensible, exposer
+l'autre.
+
+**Gubler-Thomas et le problème de l'état.** Cet indice est *cumulatif
+sur la saison* : il ne peut pas être recalculé depuis une fenêtre
+glissante de 96 h. Le coordinator porte donc l'état (`index`,
+`epidemic_started`, `last_processed_day`) et le persiste via le `Store`
+de Home Assistant. `evaluate_powdery_mildew_risk` n'avance l'indice que
+sur les journées complètes non encore traitées, ce qui rend l'appel
+idempotent — condition nécessaire puisqu'il est appelé toutes les
+15 minutes.
+
+**Écart documenté par rapport à Gubler-Thomas.** L'oïdium est inhibé
+par l'eau libre, que le modèle d'origine ne prend pas en compte. La
+pénalité pluie ajoutée reprend la règle du modèle Hop Powdery Mildew
+(variante Cascade), dérivé de Gubler-Thomas. Elle est signalée comme
+extension et désactivable : mieux vaut une déviation explicite et
+paramétrable qu'une modification silencieuse d'un modèle publié.
+
+**Seuils de gel phénologiques (`models/crops.py`).** Tables T10/T90 de
+WSU, converties des °F. Le stade change au fil de la saison : le figer
+dans les options aurait imposé une reconfiguration à chaque évolution.
+Il est donc exposé comme entité `select`, modifiable depuis le tableau
+de bord ou par automatisation. Les valeurs des cultures potagères ne
+proviennent pas de ces tables et sont marquées `source="generic"`.
+
+**Air ou surface.** Les seuils WSU s'entendent sur la température des
+bourgeons, proche de celle de l'air. Les cultures basses subissent en
+revanche le refroidissement radiatif du sol : elles sont évaluées sur
+une température de surface estimée (jusqu'à 5 °C sous l'air par ciel
+dégagé et vent nul). L'attribut `reference` indique laquelle a servi.
+Cette paramétrisation est empirique, calée sur l'ordre de grandeur
+documenté de 3 à 5 °C, et non un bilan énergétique validé.
+
+**Suivi des traitements.** Le cumul de pluie depuis une application est
+incrémenté à chaque cycle plutôt que recalculé sur tout l'historique :
+une requête recorder de trois semaines toutes les 15 minutes serait
+inacceptable. Conséquence assumée : une longue indisponibilité de Home
+Assistant sous-estime le lessivage, et le code refuse d'extrapoler
+au-delà de 6 h à partir d'une intensité instantanée.
+
 ### 6. Identité visuelle
 
 Deux usages distincts, deux fichiers différents :
@@ -153,8 +220,8 @@ canal alpha, détouré sans marge transparente, 256 px et 512 px.
 
 ## Ce qu'il reste à faire avant publication HACS
 
-1. Ajouter des tests unitaires automatisés pour `models/*.py` et pour
-   la logique de bascule Ecowitt → MeteoSwiss (pytest, sans HA).
+1. Intégrer `tests/test_models.py` (80 vérifications, exécutable sans
+   Home Assistant) à un workflow GitHub Actions.
 2. Soumettre l'icône à `home-assistant/brands` (copier
    `brands/sentinelle_ecowitt/` vers `custom_integrations/` du fork),
    puis ajouter des captures d'écran du config flow au README.
@@ -169,14 +236,15 @@ canal alpha, détouré sans marge transparente, 256 px et 512 px.
 
 ## Roadmap fonctionnelle
 
-- **v0.2** (actuelle) — support MeteoSwiss comme source de prévisions
-  et de secours automatique, entité « Source des données ».
-- **v0.3** — séparation jour/nuit correcte pour l'oïdium (actuellement
-  approximée sur l'ensemble de l'historique), ajout tavelure du
-  pommier (modèle de Mills), capteur "historique du risque" avec
-  attributs graphables.
-- **v0.4** — agrégation de plusieurs sources météo pour fiabiliser les
-  prévisions de gel, service HA pour déclencher une notification
-  formatée, blueprint d'automatisation prêt à l'emploi.
-- **v0.5** — profils "culture" (potager, verger, vigne) avec seuils de
-  risque adaptés par plante, sélectionnables dans le config flow.
+- **v0.2** — support MeteoSwiss comme source de prévisions et de
+  secours automatique, entité « Source des données ».
+- **v0.3** (actuelle) — socle horaire, critères de Hutton, indice
+  Gubler-Thomas, seuils de gel T10/T90 par stade, température de
+  surface, suivi des traitements.
+- **v0.4** — tavelure du pommier (table de Mills inversée en
+  degrés-heures), cohortes d'infection avec latence pour le mildiou,
+  historique de risque graphable.
+- **v0.5** — agrégation de plusieurs sources météo, notifications
+  formatées, blueprint d'automatisation.
+- **v0.6** — avancement automatique du stade phénologique par cumul de
+  degrés-jours, sensibilité variétale.

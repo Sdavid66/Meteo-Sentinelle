@@ -1,69 +1,122 @@
-"""Modèle de risque de mildiou — "Smith Period" simplifiée.
+"""Mildiou de la pomme de terre et de la tomate (*Phytophthora infestans*).
 
-Le mildiou (Phytophthora infestans, pomme de terre / tomate) se
-développe lorsque deux journées consécutives réunissent :
-  - au moins 11h avec humidité relative >= 90 % (ou feuillage mouillé
-    détecté par un capteur d'humectation foliaire) ;
-  - une température minimale >= 10 °C.
-Ce modèle est une simplification à but indicatif, pas un outil
-phytosanitaire certifié.
+Deux critères sont évalués en parallèle sur des séries horaires :
+
+- **Smith Period** (Smith, 1956) — deux jours consécutifs comptant
+  chacun au moins 11 heures continues à HR ≥ 90 % et une température
+  minimale ≥ 10 °C. Standard britannique historique.
+- **Critères de Hutton** (James Hutton Institute / AHDB, 2017) — mêmes
+  deux jours consécutifs avec T min ≥ 10 °C, mais seulement **6 heures**
+  à HR ≥ 90 %. Ces critères remplacent officiellement la Smith Period
+  au Royaume-Uni : les essais en enceinte climatique ont montré que les
+  isolats contemporains infectent dans des conditions nettement moins
+  humides que ne le prévoyait Smith, qui sous-détecte donc les
+  génotypes agressifs modernes.
+
+Le niveau de risque est piloté par Hutton, plus sensible. La Smith
+Period reste exposée pour comparaison et continuité.
+
+Un capteur d'humectation foliaire, quand il est disponible, remplace le
+proxy HR ≥ 90 % (voir `hourly.is_wet`).
 """
 from __future__ import annotations
 
-from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from ..const import RISK_NONE, RISK_SEVERE, RISK_WATCH
+from ..const import RISK_NONE, RISK_SEVERE, RISK_WARNING, RISK_WATCH
+from .hourly import DayMetrics, HourlySample, complete_days, day_metrics, longest_true_run
+
+#: Températures cardinales retenues pour la réponse thermique continue
+#: de P. infestans (min, optimum, max) en °C.
+CARDINAL_TEMPS = (3.0, 20.0, 30.0)
+
+HUMIDITY_THRESHOLD = 90.0
+MIN_TEMP = 10.0
+SMITH_WET_HOURS = 11
+HUTTON_WET_HOURS = 6
+CONSECUTIVE_DAYS = 2
 
 
 @dataclass
 class LateBlightRisk:
     level: str
-    consecutive_favorable_days: int
-    last_period_min_temp: float | None
+    hutton_met: bool = False
+    smith_met: bool = False
+    hutton_consecutive_days: int = 0
+    smith_consecutive_days: int = 0
+    favourable_days: int = 0
+    #: Pression thermique moyenne (0-1) sur les jours favorables.
+    thermal_pressure: float = 0.0
+    last_day_min_temp: float | None = None
+    last_day_wet_hours: int = 0
+    evaluated_days: int = 0
+    days: list[dict] = field(default_factory=list)
 
 
-def evaluate_late_blight_risk(hourly_samples: list[dict]) -> LateBlightRisk:
-    """hourly_samples: échantillons triés par temps, avec les clés
-    'time' (datetime), 'temp' (°C), 'humidity' (%, optionnel),
-    'leaf_wet' (bool, optionnel). Couvre idéalement les ~72 dernières heures.
-    """
-    days: dict[str, list[dict]] = defaultdict(list)
-    for sample in hourly_samples:
-        day_key = sample["time"].date().isoformat()
-        days[day_key].append(sample)
+def _favourable(metrics: DayMetrics, wet_hours_required: int) -> bool:
+    return (
+        metrics.temp_min is not None
+        and metrics.temp_min >= MIN_TEMP
+        and metrics.wet_hours_continuous >= wet_hours_required
+    )
 
-    favorable_flags: list[bool] = []
-    day_min_temps: list[float | None] = []
 
-    for day_key in sorted(days):
-        samples = days[day_key]
-        wet_hours = sum(
-            1
-            for s in samples
-            if s.get("leaf_wet")
-            or (s.get("humidity") is not None and s["humidity"] >= 90)
-        )
-        temps = [s["temp"] for s in samples if s.get("temp") is not None]
-        min_temp = min(temps) if temps else None
-        day_min_temps.append(min_temp)
-        favorable = wet_hours >= 11 and min_temp is not None and min_temp >= 10
-        favorable_flags.append(favorable)
+def evaluate_late_blight_risk(hourly: list[HourlySample]) -> LateBlightRisk:
+    """Évalue le risque à partir d'une série horaire (idéalement ≥ 72 h)."""
+    days = complete_days(hourly)
+    if not days:
+        return LateBlightRisk(level=RISK_NONE)
 
-    consecutive = 0
-    max_consecutive = 0
-    for flag in favorable_flags:
-        consecutive = consecutive + 1 if flag else 0
-        max_consecutive = max(max_consecutive, consecutive)
+    metrics = [
+        day_metrics(day, hours, HUMIDITY_THRESHOLD, CARDINAL_TEMPS)
+        for day, hours in days
+    ]
 
-    level = RISK_NONE
-    if max_consecutive >= 2:
+    hutton_flags = [_favourable(m, HUTTON_WET_HOURS) for m in metrics]
+    smith_flags = [_favourable(m, SMITH_WET_HOURS) for m in metrics]
+
+    hutton_run = longest_true_run(hutton_flags)
+    smith_run = longest_true_run(smith_flags)
+
+    hutton_met = hutton_run >= CONSECUTIVE_DAYS
+    smith_met = smith_run >= CONSECUTIVE_DAYS
+
+    favourable_metrics = [m for m, ok in zip(metrics, hutton_flags) if ok]
+    pressure = (
+        sum(m.thermal_pressure for m in favourable_metrics) / len(favourable_metrics)
+        if favourable_metrics
+        else 0.0
+    )
+
+    if hutton_met:
         level = RISK_SEVERE
-    elif max_consecutive == 1:
-        level = RISK_WATCH
+    elif hutton_run == 1:
+        # Une seule journée favorable : la sévérité dépend de la
+        # « qualité » thermique de cette journée pour le pathogène.
+        level = RISK_WARNING if pressure >= 0.6 else RISK_WATCH
+    else:
+        level = RISK_NONE
 
+    last = metrics[-1]
     return LateBlightRisk(
         level=level,
-        consecutive_favorable_days=max_consecutive,
-        last_period_min_temp=day_min_temps[-1] if day_min_temps else None,
+        hutton_met=hutton_met,
+        smith_met=smith_met,
+        hutton_consecutive_days=hutton_run,
+        smith_consecutive_days=smith_run,
+        favourable_days=sum(hutton_flags),
+        thermal_pressure=round(pressure, 3),
+        last_day_min_temp=last.temp_min,
+        last_day_wet_hours=last.wet_hours_continuous,
+        evaluated_days=len(metrics),
+        days=[
+            {
+                "date": m.day.isoformat(),
+                "temp_min": m.temp_min,
+                "wet_hours_continuous": m.wet_hours_continuous,
+                "hutton": hf,
+                "smith": sf,
+            }
+            for m, hf, sf in zip(metrics, hutton_flags, smith_flags)
+        ],
     )
