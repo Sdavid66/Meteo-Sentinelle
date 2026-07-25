@@ -247,28 +247,6 @@ en deçà d'un outil professionnel sur trois points :
 Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le détail des choix de
 conception.
 
-## Icône dans HACS et Home Assistant
-
-Les icônes officielles se trouvent dans `brands/sentinelle_ecowitt/`
-(`icon.png` 256 px, `icon@2x.png` 512 px, plus la source `icon.svg`),
-au format exigé par Home Assistant : PNG carré, fond transparent,
-détouré sans marge.
-
-Home Assistant et HACS ne lisent pas ces fichiers depuis ce dépôt :
-ils les chargent depuis le dépôt central
-[home-assistant/brands](https://github.com/home-assistant/brands).
-Pour que l'icône apparaisse dans l'interface, il faut donc l'y
-soumettre une fois :
-
-1. Forker `home-assistant/brands`.
-2. Copier `brands/sentinelle_ecowitt/` vers
-   `custom_integrations/sentinelle_ecowitt/` dans le fork.
-3. Ouvrir une pull request.
-
-Tant que cette PR n'est pas fusionnée, HACS affiche une icône
-générique — c'est normal et sans conséquence sur le fonctionnement de
-l'intégration.
-
 ## Soutenir le projet
 
 Si cette intégration vous fait gagner du temps (ou sauve vos plants de
