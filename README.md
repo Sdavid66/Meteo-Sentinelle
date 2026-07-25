@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Sdavid66/Sentinelle-Ecowitt/main/images/logo.png" alt="Sentinelle Ecowitt" width="260">
+  <img src="images/logo.png" alt="Sentinelle Ecowitt" width="260">
 </p>
 
 <h1 align="center">Sentinelle Ecowitt</h1>
