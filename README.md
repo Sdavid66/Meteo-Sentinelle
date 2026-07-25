@@ -11,7 +11,7 @@ Assistant, combinés aux prévisions météo.
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20the%20project-orange?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/sdavid66)
 ![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)
-![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.3.1-blue.svg)
 
 ## Pourquoi
 
@@ -76,7 +76,7 @@ quelle autre source de capteurs Home Assistant peut servir de secours.
 
 ## Prérequis
 
-- Home Assistant 2024.6.0 ou supérieur.
+- Home Assistant 2026.3.0 ou supérieur (nécessaire pour l'icône locale).
 - Une station Ecowitt déjà intégrée (intégration native `Ecowitt` ou
   équivalent) avec au minimum un capteur de température et d'humidité.
 - Une entité météo (`weather.*`) configurée pour les prévisions —
@@ -246,6 +246,41 @@ en deçà d'un outil professionnel sur trois points :
 
 Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le détail des choix de
 conception.
+
+## Icône dans HACS et Home Assistant
+
+Depuis Home Assistant 2026.3, une intégration personnalisée peut fournir
+sa propre icône **directement dans son dossier**, sans passer par le
+dépôt central `home-assistant/brands` (qui n'accepte d'ailleurs plus les
+soumissions d'intégrations personnalisées). C'est la méthode que ce
+projet utilise :
+
+```
+custom_components/sentinelle_ecowitt/brand/
+├── icon.png      (256×256)
+├── icon@2x.png   (512×512)
+└── icon.svg      (source, non utilisée par Home Assistant)
+```
+
+Home Assistant sert ces images via une API locale
+(`/api/brands/integration/sentinelle_ecowitt/…`) et leur donne priorité
+sur celles du dépôt central. Rien à soumettre, rien à attendre : dès
+l'installation, l'icône apparaît dans **Paramètres → Appareils et
+services**.
+
+**Limitation connue de HACS.** Le tableau de bord HACS (la liste des
+dépôts avant installation) va chercher ses vignettes sur
+`data-v2.hacs.xyz`, qui ne connaît pas les icônes fournies localement
+par une intégration ([hacs/integration#5171](https://github.com/hacs/integration/issues/5171),
+[#5223](https://github.com/hacs/integration/issues/5223)). Il est donc
+normal de voir une icône manquante ou générique **dans la liste HACS**
+tant que ce point n'est pas corrigé côté HACS — l'icône s'affiche
+correctement une fois l'intégration installée et configurée, ce qui est
+ce qui compte réellement.
+
+Nécessite Home Assistant 2026.3 ou supérieur ; sur une version plus
+ancienne, l'icône ne s'affiche nulle part (repli silencieux sur le
+générique), sans que cela n'affecte le fonctionnement de l'intégration.
 
 ## Soutenir le projet
 

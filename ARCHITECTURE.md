@@ -202,29 +202,53 @@ au-delà de 6 h à partir d'une intensité instantanée.
 
 ### 6. Identité visuelle
 
-Deux usages distincts, deux fichiers différents :
+Deux usages distincts, deux mécanismes différents :
 
 - **Bannière README** (`images/logo.png`, 640 px) — le logo complet,
   qui illustre la chaîne mesures → moteur → alertes. Affiché en grand,
-  il est lisible et explique le projet d'un coup d'œil.
-- **Icône HACS / Home Assistant** (`brands/sentinelle_ecowitt/`) — une
-  version épurée du même logo (feuille + flocon, palette identique,
-  sans texte). Nécessaire car l'interface affiche l'icône entre 32 et
-  64 px, taille à laquelle tout texte devient illisible.
+  il est lisible et explique le projet d'un coup d'œil. Un simple
+  fichier dans le dépôt, rendu par GitHub.
+- **Icône HACS / Home Assistant**
+  (`custom_components/sentinelle_ecowitt/brand/`) — une version épurée
+  du même logo (feuille + flocon, palette identique, sans texte).
+  Nécessaire car l'interface affiche l'icône entre 32 et 64 px, taille
+  à laquelle tout texte devient illisible.
 
-La source vectorielle de l'icône est versionnée (`icon.svg`), afin de
-pouvoir la régénérer à n'importe quelle résolution sans perte.
+**Choix du mécanisme de livraison de l'icône.** Deux options
+existaient : soumettre les images au dépôt central
+`home-assistant/brands` (l'ancienne méthode), ou les livrer directement
+dans le dossier de l'intégration (`brand/`, méthode introduite avec
+Home Assistant 2026.3). La seconde a été retenue : le dépôt `brands`
+n'accepte d'ailleurs plus les soumissions d'intégrations personnalisées
+depuis cette version, et la méthode locale ne dépend d'aucune PR
+externe ni délai de fusion — l'icône est disponible dès l'installation.
+Home Assistant sert ces images via
+`/api/brands/integration/sentinelle_ecowitt/…` et leur donne priorité
+sur celles du dépôt central.
 
-Contraintes respectées pour `home-assistant/brands` : PNG carré,
-canal alpha, détouré sans marge transparente, 256 px et 512 px.
+Contrepartie assumée : nécessite HA ≥ 2026.3 (contrainte répercutée
+dans `hacs.json`), et une limitation connue de HACS fait que le tableau
+de bord HACS (avant installation) n'affiche pas ces icônes locales —
+son catalogue de vignettes vient d'une source distincte
+(`data-v2.hacs.xyz`) qui n'a pas connaissance des icônes livrées dans
+les dossiers d'intégration ([hacs/integration#5171](https://github.com/hacs/integration/issues/5171),
+[#5223](https://github.com/hacs/integration/issues/5223), non résolus
+au moment de l'écriture). L'icône s'affiche correctement une fois
+l'intégration installée, ce qui est la garantie qui compte.
+
+La source vectorielle de l'icône est versionnée (`icon.svg`, à côté
+des PNG dans `brand/`, ignorée par Home Assistant), afin de pouvoir la
+régénérer à n'importe quelle résolution sans perte.
+
+Contraintes respectées pour le format `brand/` : PNG carré, canal
+alpha, détouré sans marge transparente, 256 px et 512 px — les mêmes
+exigences que `home-assistant/brands`, seul l'emplacement change.
 
 ## Ce qu'il reste à faire avant publication HACS
 
 1. Intégrer `tests/test_models.py` (80 vérifications, exécutable sans
    Home Assistant) à un workflow GitHub Actions.
-2. Soumettre l'icône à `home-assistant/brands` (copier
-   `brands/sentinelle_ecowitt/` vers `custom_integrations/` du fork),
-   puis ajouter des captures d'écran du config flow au README.
+2. Ajouter des captures d'écran du config flow et des entités au README.
 3. Tester en conditions réelles avec une station Ecowitt + une entité
    météo (MeteoSwiss ou Met.no).
 4. Vérifier le parcours de mise à jour depuis la v0.1 (le config flow
