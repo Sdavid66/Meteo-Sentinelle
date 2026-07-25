@@ -28,30 +28,38 @@ async def async_setup_entry(
 ) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
-    entities = [
+    entities: list[SentinelleEntity] = [
         PlantGuardRiskSensor(coordinator, entry, model_key)
-        for model_key in coordinator.data.keys()
+        for model_key in coordinator.data
     ]
+    entities.append(DataSourceSensor(coordinator, entry))
     async_add_entities(entities)
 
 
-class PlantGuardRiskSensor(CoordinatorEntity, SensorEntity):
-    """Représente le niveau de risque d'un modèle de prédiction."""
+class SentinelleEntity(CoordinatorEntity, SensorEntity):
+    """Base commune : rattache toutes les entités au même appareil."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator, entry: ConfigEntry, model_key: str) -> None:
+    def __init__(self, coordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator)
-        self._model_key = model_key
-        self._attr_unique_id = f"{entry.entry_id}_{model_key}"
-        self._attr_name = RISK_NAMES.get(model_key, model_key)
-        self._attr_icon = RISK_ICONS.get(model_key, "mdi:sprout")
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
             manufacturer="Sentinelle Ecowitt",
             model="Moteur de prédiction",
         )
+
+
+class PlantGuardRiskSensor(SentinelleEntity):
+    """Représente le niveau de risque d'un modèle de prédiction."""
+
+    def __init__(self, coordinator, entry: ConfigEntry, model_key: str) -> None:
+        super().__init__(coordinator, entry)
+        self._model_key = model_key
+        self._attr_unique_id = f"{entry.entry_id}_{model_key}"
+        self._attr_name = RISK_NAMES.get(model_key, model_key)
+        self._attr_icon = RISK_ICONS.get(model_key, "mdi:sprout")
 
     @property
     def native_value(self) -> str | None:
@@ -61,6 +69,38 @@ class PlantGuardRiskSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         result = self.coordinator.data.get(self._model_key)
-        if result is None:
-            return {}
-        return {k: v for k, v in vars(result).items() if k != "level"}
+        attributes = {} if result is None else {
+            k: v for k, v in vars(result).items() if k != "level"
+        }
+        # Origine réelle des mesures ayant servi au calcul (ecowitt /
+        # meteoswiss / unavailable), utile pour diagnostiquer une panne
+        # de capteur.
+        attributes["sources"] = dict(getattr(self.coordinator, "sources", {}))
+        return attributes
+
+
+class DataSourceSensor(SentinelleEntity):
+    """Indique quelle station alimente réellement les calculs."""
+
+    _attr_icon = "mdi:database-marker"
+
+    def __init__(self, coordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_data_source"
+        self._attr_name = "Source des données"
+
+    @property
+    def native_value(self) -> str:
+        sources = getattr(self.coordinator, "sources", {}) or {}
+        used = set(sources.values()) - {"unavailable"}
+        if not used:
+            return "unavailable"
+        if used == {"ecowitt"}:
+            return "ecowitt"
+        if used == {"meteoswiss"}:
+            return "meteoswiss"
+        return "mixed"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return dict(getattr(self.coordinator, "sources", {}))

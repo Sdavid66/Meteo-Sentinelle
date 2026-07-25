@@ -2,15 +2,38 @@
 
 DOMAIN = "sentinelle_ecowitt"
 
-# Entités source configurées par l'utilisateur (issues de l'intégration
-# Ecowitt native ou de toute autre source compatible).
+# --- Sources primaires : capteurs de la station Ecowitt de l'utilisateur ---
 CONF_TEMP_ENTITY = "temperature_entity"
 CONF_HUMIDITY_ENTITY = "humidity_entity"
 CONF_RAIN_ENTITY = "rain_rate_entity"
 CONF_WIND_ENTITY = "wind_speed_entity"
 CONF_LEAF_WETNESS_ENTITY = "leaf_wetness_entity"
+
+# --- Sources de secours : capteurs temps réel d'une station officielle
+# (typiquement l'intégration MeteoSwiss). Utilisées lorsque le capteur
+# Ecowitt correspondant est absent, indisponible ou en panne. ---
+CONF_FALLBACK_TEMP_ENTITY = "fallback_temperature_entity"
+CONF_FALLBACK_HUMIDITY_ENTITY = "fallback_humidity_entity"
+CONF_FALLBACK_WIND_ENTITY = "fallback_wind_speed_entity"
+CONF_FALLBACK_RAIN_ENTITY = "fallback_rain_rate_entity"
+
+# --- Prévisions ---
 CONF_WEATHER_ENTITY = "weather_entity"
+
 CONF_ENABLED_MODELS = "enabled_models"
+
+# Correspondance mesure -> (entité primaire, entité de secours).
+MEASUREMENT_SOURCES = {
+    "temperature": (CONF_TEMP_ENTITY, CONF_FALLBACK_TEMP_ENTITY),
+    "humidity": (CONF_HUMIDITY_ENTITY, CONF_FALLBACK_HUMIDITY_ENTITY),
+    "wind_speed": (CONF_WIND_ENTITY, CONF_FALLBACK_WIND_ENTITY),
+    "rain_rate": (CONF_RAIN_ENTITY, CONF_FALLBACK_RAIN_ENTITY),
+}
+
+# Origine effective d'une mesure, exposée en attribut d'entité.
+SOURCE_PRIMARY = "ecowitt"
+SOURCE_FALLBACK = "meteoswiss"
+SOURCE_NONE = "unavailable"
 
 # Modèles de risque disponibles.
 MODEL_FROST = "frost"

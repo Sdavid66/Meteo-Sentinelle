@@ -11,8 +11,18 @@
           "wind_speed_entity": "Wind speed sensor (optional)",
           "rain_rate_entity": "Rain sensor (optional)",
           "leaf_wetness_entity": "Leaf wetness sensor (optional)",
-          "weather_entity": "Weather entity (forecast)",
+          "weather_entity": "Weather entity for forecasts (e.g. MeteoSwiss)",
           "enabled_models": "Risk models to enable"
+        }
+      },
+      "fallback": {
+        "title": "Backup sources (optional)",
+        "description": "If you use the MeteoSwiss integration (or another official station), you can point to its real-time sensors here. They automatically take over whenever an Ecowitt sensor is missing or fails. Leave empty to rely on your Ecowitt station only.",
+        "data": {
+          "fallback_temperature_entity": "Backup temperature (MeteoSwiss)",
+          "fallback_humidity_entity": "Backup humidity (MeteoSwiss)",
+          "fallback_wind_speed_entity": "Backup wind speed (MeteoSwiss)",
+          "fallback_rain_rate_entity": "Backup rain (MeteoSwiss)"
         }
       }
     },
@@ -24,14 +34,19 @@
     "step": {
       "init": {
         "title": "Update configuration",
+        "description": "Sensors from your Ecowitt station, then optional backup sources (MeteoSwiss).",
         "data": {
           "temperature_entity": "Temperature sensor",
           "humidity_entity": "Humidity sensor",
           "wind_speed_entity": "Wind speed sensor (optional)",
           "rain_rate_entity": "Rain sensor (optional)",
           "leaf_wetness_entity": "Leaf wetness sensor (optional)",
-          "weather_entity": "Weather entity (forecast)",
-          "enabled_models": "Risk models to enable"
+          "weather_entity": "Weather entity for forecasts (e.g. MeteoSwiss)",
+          "enabled_models": "Risk models to enable",
+          "fallback_temperature_entity": "Backup temperature (MeteoSwiss)",
+          "fallback_humidity_entity": "Backup humidity (MeteoSwiss)",
+          "fallback_wind_speed_entity": "Backup wind speed (MeteoSwiss)",
+          "fallback_rain_rate_entity": "Backup rain (MeteoSwiss)"
         }
       }
     }

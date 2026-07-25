@@ -1,11 +1,11 @@
 {
   "domain": "sentinelle_ecowitt",
   "name": "Sentinelle Ecowitt",
-  "codeowners": ["@YOUR_GITHUB_USERNAME"],
+  "codeowners": ["@Sdavid66"],
   "config_flow": true,
-  "documentation": "https://github.com/YOUR_GITHUB_USERNAME/ha-sentinelle-ecowitt",
-  "issue_tracker": "https://github.com/YOUR_GITHUB_USERNAME/ha-sentinelle-ecowitt/issues",
+  "documentation": "https://github.com/Sdavid66/Sentinelle-Ecowitt",
+  "issue_tracker": "https://github.com/Sdavid66/Sentinelle-Ecowitt/issues",
   "iot_class": "calculated",
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

@@ -11,8 +11,18 @@
           "wind_speed_entity": "Capteur de vent (optionnel)",
           "rain_rate_entity": "Capteur de pluie (optionnel)",
           "leaf_wetness_entity": "Capteur d'humectation foliaire (optionnel)",
-          "weather_entity": "Entité météo (prévisions)",
+          "weather_entity": "Entité météo pour les prévisions (ex. MeteoSwiss)",
           "enabled_models": "Modèles de risque à activer"
+        }
+      },
+      "fallback": {
+        "title": "Sources de secours (optionnel)",
+        "description": "Si vous utilisez l'intégration MeteoSwiss (ou une autre station officielle), vous pouvez indiquer ici ses capteurs temps réel. Ils prendront automatiquement le relais lorsqu'un capteur Ecowitt est absent ou tombe en panne. Laissez vide pour utiliser uniquement votre station Ecowitt.",
+        "data": {
+          "fallback_temperature_entity": "Température de secours (MeteoSwiss)",
+          "fallback_humidity_entity": "Humidité de secours (MeteoSwiss)",
+          "fallback_wind_speed_entity": "Vent de secours (MeteoSwiss)",
+          "fallback_rain_rate_entity": "Pluie de secours (MeteoSwiss)"
         }
       }
     },
@@ -24,14 +34,19 @@
     "step": {
       "init": {
         "title": "Modifier la configuration",
+        "description": "Capteurs de votre station Ecowitt, puis sources de secours optionnelles (MeteoSwiss).",
         "data": {
           "temperature_entity": "Capteur de température",
           "humidity_entity": "Capteur d'humidité",
           "wind_speed_entity": "Capteur de vent (optionnel)",
           "rain_rate_entity": "Capteur de pluie (optionnel)",
           "leaf_wetness_entity": "Capteur d'humectation foliaire (optionnel)",
-          "weather_entity": "Entité météo (prévisions)",
-          "enabled_models": "Modèles de risque à activer"
+          "weather_entity": "Entité météo pour les prévisions (ex. MeteoSwiss)",
+          "enabled_models": "Modèles de risque à activer",
+          "fallback_temperature_entity": "Température de secours (MeteoSwiss)",
+          "fallback_humidity_entity": "Humidité de secours (MeteoSwiss)",
+          "fallback_wind_speed_entity": "Vent de secours (MeteoSwiss)",
+          "fallback_rain_rate_entity": "Pluie de secours (MeteoSwiss)"
         }
       }
     }

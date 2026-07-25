@@ -1,5 +1,6 @@
-"""DataUpdateCoordinator : lit les entités source + prévisions météo et
-exécute les modèles de risque activés."""
+"""DataUpdateCoordinator : lit les entités source (station personnelle
+Ecowitt, avec secours automatique sur une station officielle type
+MeteoSwiss), récupère les prévisions et exécute les modèles de risque."""
 from __future__ import annotations
 
 import logging
@@ -11,15 +12,20 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     CONF_ENABLED_MODELS,
+    CONF_FALLBACK_HUMIDITY_ENTITY,
+    CONF_FALLBACK_TEMP_ENTITY,
     CONF_HUMIDITY_ENTITY,
     CONF_LEAF_WETNESS_ENTITY,
     CONF_TEMP_ENTITY,
     CONF_WEATHER_ENTITY,
-    CONF_WIND_ENTITY,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
+    MEASUREMENT_SOURCES,
     MODEL_FROST,
     MODEL_LATE_BLIGHT,
     MODEL_POWDERY_MILDEW,
+    SOURCE_FALLBACK,
+    SOURCE_NONE,
+    SOURCE_PRIMARY,
 )
 from .models.frost import evaluate_frost_risk
 from .models.late_blight import evaluate_late_blight_risk
@@ -28,11 +34,13 @@ from .models.powdery_mildew import evaluate_powdery_mildew_risk
 _LOGGER = logging.getLogger(__name__)
 
 
-class EcowittPlantGuardCoordinator(DataUpdateCoordinator[dict]):
+class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
     """Récupère les données et calcule les risques à intervalle régulier."""
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
         self.entry = entry
+        # Origine effective de chaque mesure au dernier rafraîchissement.
+        self.sources: dict[str, str] = {}
         super().__init__(
             hass,
             _LOGGER,
@@ -41,6 +49,7 @@ class EcowittPlantGuardCoordinator(DataUpdateCoordinator[dict]):
         )
 
     def _state_float(self, entity_id: str | None) -> float | None:
+        """Valeur numérique d'une entité, ou None si absente/indisponible."""
         if not entity_id:
             return None
         state = self.hass.states.get(entity_id)
@@ -48,14 +57,58 @@ class EcowittPlantGuardCoordinator(DataUpdateCoordinator[dict]):
             return None
         try:
             return float(state.state)
-        except ValueError:
+        except (TypeError, ValueError):
             return None
+
+    def _resolve_measurement(
+        self, entry_data: dict, measurement: str
+    ) -> tuple[float | None, str]:
+        """Renvoie (valeur, origine) pour une mesure.
+
+        La station Ecowitt est prioritaire ; si son capteur n'est pas
+        configuré, est indisponible ou renvoie une valeur illisible, on
+        bascule automatiquement sur l'entité de secours (MeteoSwiss).
+        """
+        primary_key, fallback_key = MEASUREMENT_SOURCES[measurement]
+
+        value = self._state_float(entry_data.get(primary_key))
+        if value is not None:
+            return value, SOURCE_PRIMARY
+
+        value = self._state_float(entry_data.get(fallback_key))
+        if value is not None:
+            if entry_data.get(primary_key):
+                _LOGGER.debug(
+                    "Mesure %s : capteur Ecowitt indisponible, bascule sur %s",
+                    measurement,
+                    entry_data.get(fallback_key),
+                )
+            return value, SOURCE_FALLBACK
+
+        return None, SOURCE_NONE
+
+    def _resolve_history_entity(
+        self, entry_data: dict, measurement: str
+    ) -> str | None:
+        """Entité à interroger dans le recorder pour une mesure donnée.
+
+        On applique la même priorité que pour les valeurs instantanées :
+        l'historique suit la source actuellement retenue.
+        """
+        primary_key, fallback_key = MEASUREMENT_SOURCES[measurement]
+        source = self.sources.get(measurement)
+        if source == SOURCE_FALLBACK:
+            return entry_data.get(fallback_key)
+        return entry_data.get(primary_key) or entry_data.get(fallback_key)
 
     async def _async_get_forecast(
         self, weather_entity: str | None
     ) -> list[tuple[datetime, float]]:
-        """Récupère les prévisions horaires via le service weather.get_forecasts
-        (API moderne HA, remplace l'ancien attribut 'forecast')."""
+        """Prévisions horaires via le service weather.get_forecasts.
+
+        Compatible avec toute entité météo Home Assistant, y compris celle
+        fournie par l'intégration MeteoSwiss.
+        """
         if not weather_entity:
             return []
         try:
@@ -77,10 +130,13 @@ class EcowittPlantGuardCoordinator(DataUpdateCoordinator[dict]):
             temp = item.get("temperature")
             if when is None or temp is None:
                 continue
-            try:
-                when_dt = datetime.fromisoformat(when)
-            except ValueError:
-                continue
+            if isinstance(when, datetime):
+                when_dt = when
+            else:
+                try:
+                    when_dt = datetime.fromisoformat(when)
+                except (TypeError, ValueError):
+                    continue
             result.append((when_dt, temp))
         return result
 
@@ -88,8 +144,8 @@ class EcowittPlantGuardCoordinator(DataUpdateCoordinator[dict]):
         self, entry_data: dict, hours: int = 72
     ) -> list[dict]:
         """Historique récent (recorder) pour nourrir les modèles maladie."""
-        temp_entity = entry_data.get(CONF_TEMP_ENTITY)
-        humidity_entity = entry_data.get(CONF_HUMIDITY_ENTITY)
+        temp_entity = self._resolve_history_entity(entry_data, "temperature")
+        humidity_entity = self._resolve_history_entity(entry_data, "humidity")
         leaf_entity = entry_data.get(CONF_LEAF_WETNESS_ENTITY)
 
         entity_ids = [e for e in (temp_entity, humidity_entity, leaf_entity) if e]
@@ -114,7 +170,7 @@ class EcowittPlantGuardCoordinator(DataUpdateCoordinator[dict]):
         for state in temp_states:
             try:
                 temp_val = float(state.state)
-            except ValueError:
+            except (TypeError, ValueError):
                 continue
             samples.append({"time": state.last_changed, "temp": temp_val})
 
@@ -125,7 +181,7 @@ class EcowittPlantGuardCoordinator(DataUpdateCoordinator[dict]):
             latest = candidates[-1]
             try:
                 return float(latest.state)
-            except ValueError:
+            except (TypeError, ValueError):
                 return latest.state == "on"
 
         humidity_states = raw.get(humidity_entity, []) if humidity_entity else []
@@ -141,9 +197,14 @@ class EcowittPlantGuardCoordinator(DataUpdateCoordinator[dict]):
         entry_data = {**self.entry.data, **self.entry.options}
         enabled_models = entry_data.get(CONF_ENABLED_MODELS, [MODEL_FROST])
 
-        current_temp = self._state_float(entry_data.get(CONF_TEMP_ENTITY))
-        current_humidity = self._state_float(entry_data.get(CONF_HUMIDITY_ENTITY))
-        wind_speed = self._state_float(entry_data.get(CONF_WIND_ENTITY))
+        # Résolution des mesures instantanées, avec traçabilité de la source.
+        values: dict[str, float | None] = {}
+        sources: dict[str, str] = {}
+        for measurement in MEASUREMENT_SOURCES:
+            value, source = self._resolve_measurement(entry_data, measurement)
+            values[measurement] = value
+            sources[measurement] = source
+        self.sources = sources
 
         weather_entity = entry_data.get(CONF_WEATHER_ENTITY)
         forecast = await self._async_get_forecast(weather_entity)
@@ -157,7 +218,11 @@ class EcowittPlantGuardCoordinator(DataUpdateCoordinator[dict]):
 
         if MODEL_FROST in enabled_models:
             results[MODEL_FROST] = evaluate_frost_risk(
-                current_temp, current_humidity, wind_speed, cloud_cover, forecast
+                values["temperature"],
+                values["humidity"],
+                values["wind_speed"],
+                cloud_cover,
+                forecast,
             )
 
         if MODEL_LATE_BLIGHT in enabled_models or MODEL_POWDERY_MILDEW in enabled_models:
