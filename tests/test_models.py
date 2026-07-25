@@ -15,24 +15,24 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CC = ROOT / "custom_components" / "sentinelle_ecowitt"
+CC = ROOT / "custom_components" / "meteo_sentinelle"
 
 
 def _load():
     """Charge les modules modèles en simulant le package, sans HA."""
-    pkg = types.ModuleType("sentinelle_ecowitt")
+    pkg = types.ModuleType("meteo_sentinelle")
     pkg.__path__ = [str(CC)]
-    sys.modules["sentinelle_ecowitt"] = pkg
+    sys.modules["meteo_sentinelle"] = pkg
 
-    models = types.ModuleType("sentinelle_ecowitt.models")
+    models = types.ModuleType("meteo_sentinelle.models")
     models.__path__ = [str(CC / "models")]
-    sys.modules["sentinelle_ecowitt.models"] = models
+    sys.modules["meteo_sentinelle.models"] = models
 
     loaded = {}
     for name in ("const", "models.hourly", "models.crops", "models.frost",
                  "models.late_blight", "models.powdery_mildew",
                  "models.treatments", "models.phenology", "tree"):
-        full = f"sentinelle_ecowitt.{name}"
+        full = f"meteo_sentinelle.{name}"
         path = CC / (name.replace(".", "/") + ".py")
         spec = importlib.util.spec_from_file_location(full, path)
         module = importlib.util.module_from_spec(spec)

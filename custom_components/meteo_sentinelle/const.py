@@ -1,6 +1,6 @@
-"""Constantes pour Sentinelle Ecowitt."""
+"""Constantes pour Météo Sentinelle."""
 
-DOMAIN = "sentinelle_ecowitt"
+DOMAIN = "meteo_sentinelle"
 
 # --- Sources primaires : capteurs de la station Ecowitt de l'utilisateur ---
 CONF_TEMP_ENTITY = "temperature_entity"

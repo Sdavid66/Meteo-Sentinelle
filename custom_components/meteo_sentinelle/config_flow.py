@@ -1,4 +1,4 @@
-"""Config flow pour Sentinelle Ecowitt.
+"""Config flow pour Météo Sentinelle.
 
 L'entrée principale porte ce qui est **commun au site** : capteurs,
 prévisions, sources de secours, alertes. Chaque **arbre surveillé** est
@@ -191,7 +191,7 @@ def _tree_schema(crop: str | None = None, defaults: dict | None = None) -> vol.S
     return vol.Schema(schema)
 
 
-class SentinelleEcowittConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class MeteoSentinelleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Configuration du site, puis ajout des arbres en sous-entrées."""
 
     VERSION = 4
@@ -235,7 +235,9 @@ class SentinelleEcowittConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        return SentinelleEcowittOptionsFlow(config_entry)
+        # Depuis Home Assistant 2024.11, la classe de base fournit
+        # self.config_entry : lui repasser l'entrée est déprécié.
+        return MeteoSentinelleOptionsFlow()
 
 
 class TreeSubentryFlowHandler(config_entries.ConfigSubentryFlow):
@@ -308,11 +310,8 @@ class TreeSubentryFlowHandler(config_entries.ConfigSubentryFlow):
         )
 
 
-class SentinelleEcowittOptionsFlow(config_entries.OptionsFlow):
+class MeteoSentinelleOptionsFlow(config_entries.OptionsFlow):
     """Réglages communs au site (les arbres se gèrent en sous-entrées)."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input: dict | None = None):
         if user_input is not None:

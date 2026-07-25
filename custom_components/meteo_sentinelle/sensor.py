@@ -20,7 +20,7 @@ from .const import (
     RISK_LEVELS,
     SOURCE_NONE,
 )
-from .entity import SentinelleSiteEntity, SentinelleTreeEntity
+from .entity import MeteoSentinelleSiteEntity, MeteoSentinelleTreeEntity
 from .models import phenology
 from .models.crops import STAGE_LABELS
 from .tree import Tree
@@ -72,7 +72,7 @@ async def async_setup_entry(
         async_add_entities(entities, config_subentry_id=subentry_id)
 
 
-class RiskSensor(SentinelleTreeEntity, SensorEntity):
+class RiskSensor(MeteoSentinelleTreeEntity, SensorEntity):
     """Niveau de risque d'un modèle, pour un arbre donné."""
 
     _attr_device_class = SensorDeviceClass.ENUM
@@ -111,7 +111,7 @@ class RiskSensor(SentinelleTreeEntity, SensorEntity):
         return attributes
 
 
-class StageSensor(SentinelleTreeEntity, SensorEntity):
+class StageSensor(MeteoSentinelleTreeEntity, SensorEntity):
     """Stade phénologique courant, en lecture, avec son contexte.
 
     Doublon apparent avec l'entité `select`, mais utile : un capteur
@@ -171,7 +171,7 @@ class StageSensor(SentinelleTreeEntity, SensorEntity):
         return attributes
 
 
-class MildewIndexSensor(SentinelleTreeEntity, SensorEntity):
+class MildewIndexSensor(MeteoSentinelleTreeEntity, SensorEntity):
     """Indice Gubler-Thomas (0-100), cumulatif sur la saison."""
 
     _attr_icon = "mdi:chart-line"
@@ -203,7 +203,7 @@ class MildewIndexSensor(SentinelleTreeEntity, SensorEntity):
         }
 
 
-class ProtectionSensor(SentinelleTreeEntity, SensorEntity):
+class ProtectionSensor(MeteoSentinelleTreeEntity, SensorEntity):
     """Échéance de protection : « protégé jusqu'à… »."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
@@ -226,7 +226,7 @@ class ProtectionSensor(SentinelleTreeEntity, SensorEntity):
         return dict(self.coordinator.tree_protection(self._subentry_id, self._target))
 
 
-class GddSensor(SentinelleSiteEntity, SensorEntity):
+class GddSensor(MeteoSentinelleSiteEntity, SensorEntity):
     """Cumul de degrés-jours du site depuis le 1er janvier."""
 
     _attr_icon = "mdi:thermometer-plus"
@@ -253,7 +253,7 @@ class GddSensor(SentinelleSiteEntity, SensorEntity):
         }
 
 
-class DataSourceSensor(SentinelleSiteEntity, SensorEntity):
+class DataSourceSensor(MeteoSentinelleSiteEntity, SensorEntity):
     """Indique quelle station alimente réellement les calculs."""
 
     _attr_icon = "mdi:database-marker"

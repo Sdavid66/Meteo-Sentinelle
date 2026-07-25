@@ -2,8 +2,8 @@
 
 Deux niveaux, volontairement séparés :
 
-- **Événements** (`sentinelle_ecowitt_risk_changed`,
-  `sentinelle_ecowitt_stage_advanced`) — le mécanisme de base. Ils ne
+- **Événements** (`meteo_sentinelle_risk_changed`,
+  `meteo_sentinelle_stage_advanced`) — le mécanisme de base. Ils ne
   supposent rien du canal choisi et servent de déclencheur à n'importe
   quelle automatisation, dont le blueprint fourni.
 - **Notifications persistantes** — activées par défaut pour que le

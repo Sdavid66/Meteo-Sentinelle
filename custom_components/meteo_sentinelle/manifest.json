@@ -1,0 +1,11 @@
+{
+  "domain": "meteo_sentinelle",
+  "name": "Météo Sentinelle",
+  "codeowners": ["@Sdavid66"],
+  "config_flow": true,
+  "documentation": "https://github.com/Sdavid66/Meteo-Sentinelle",
+  "issue_tracker": "https://github.com/Sdavid66/Meteo-Sentinelle/issues",
+  "iot_class": "calculated",
+  "requirements": [],
+  "version": "0.5.0"
+}

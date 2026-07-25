@@ -1,5 +1,5 @@
 blueprint:
-  name: Sentinelle Ecowitt — alertes de risque
+  name: Météo Sentinelle — alertes de risque
   description: >-
     Envoie une notification lorsqu'un arbre surveillé passe à un niveau de
     risque plus élevé (gel, mildiou, oïdium), ou lorsque son stade
@@ -59,10 +59,10 @@ max: 25
 
 triggers:
   - trigger: event
-    event_type: sentinelle_ecowitt_risk_changed
+    event_type: meteo_sentinelle_risk_changed
     id: risk
   - trigger: event
-    event_type: sentinelle_ecowitt_stage_advanced
+    event_type: meteo_sentinelle_stage_advanced
     id: stage
 
 variables:

@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Sentinelle Ecowitt",
+        "title": "Météo Sentinelle",
         "description": "Capteurs et prévisions communs au site. Les arbres surveillés s'ajoutent ensuite un par un depuis la page de l'intégration.",
         "data": {
           "name": "Nom du site",

@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Sentinelle Ecowitt",
+        "title": "Météo Sentinelle",
         "description": "Sensors and forecasts shared across the site. Monitored trees are added one by one afterwards, from the integration page.",
         "data": {
           "name": "Site name",

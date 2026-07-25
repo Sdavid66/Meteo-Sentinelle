@@ -53,7 +53,7 @@ _LOGGER = logging.getLogger(__name__)
 GDD_HISTORY_DAYS = 10
 
 
-class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
+class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
     """Calcule les risques du site et de chaque arbre."""
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
@@ -73,7 +73,7 @@ class SentinelleEcowittCoordinator(DataUpdateCoordinator[dict]):
         super().__init__(
             hass,
             _LOGGER,
-            name="Sentinelle Ecowitt",
+            name="Météo Sentinelle",
             update_interval=timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES),
         )
 

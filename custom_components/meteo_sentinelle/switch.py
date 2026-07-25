@@ -15,7 +15,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import CONF_AUTO_ADVANCE, DOMAIN
-from .entity import SentinelleTreeEntity
+from .entity import MeteoSentinelleTreeEntity
 from .models.crops import stage_options
 from .tree import Tree
 
@@ -36,7 +36,7 @@ async def async_setup_entry(
         )
 
 
-class AutoAdvanceSwitch(SentinelleTreeEntity, SwitchEntity):
+class AutoAdvanceSwitch(MeteoSentinelleTreeEntity, SwitchEntity):
     """Active ou non l'avancement automatique du stade."""
 
     _attr_icon = "mdi:calendar-clock"

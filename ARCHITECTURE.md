@@ -1,4 +1,4 @@
-# Architecture — Sentinelle Ecowitt
+# Architecture — Météo Sentinelle
 
 Document de planification. Décrit les choix de conception retenus et
 les prochaines étapes.
@@ -93,7 +93,7 @@ secours. MeteoSwiss est simplement le cas d'usage documenté.
 ### 3. Structure du code
 
 ```
-custom_components/sentinelle_ecowitt/
+custom_components/meteo_sentinelle/
 ├── __init__.py          # setup/unload de l'entry
 ├── manifest.json
 ├── const.py              # clés de config, domaines, niveaux de risque
@@ -255,8 +255,8 @@ l'interrupteur d'avancement automatique qui permet de tout couper.
 **Alerting : événements d'abord.** Deux couches, dans cet ordre de
 dépendance :
 
-- les **événements** (`sentinelle_ecowitt_risk_changed`,
-  `sentinelle_ecowitt_stage_advanced`) sont le mécanisme primitif. Ils ne
+- les **événements** (`meteo_sentinelle_risk_changed`,
+  `meteo_sentinelle_stage_advanced`) sont le mécanisme primitif. Ils ne
   présument rien du canal et servent de socle au blueprint fourni ;
 - les **notifications persistantes** sont construites par-dessus, actives
   par défaut pour que le plugin soit utile sans configuration.
@@ -310,7 +310,7 @@ Deux usages distincts, deux mécanismes différents :
   il est lisible et explique le projet d'un coup d'œil. Un simple
   fichier dans le dépôt, rendu par GitHub.
 - **Icône HACS / Home Assistant**
-  (`custom_components/sentinelle_ecowitt/brand/`) — une version épurée
+  (`custom_components/meteo_sentinelle/brand/`) — une version épurée
   du même logo (feuille + flocon, palette identique, sans texte).
   Nécessaire car l'interface affiche l'icône entre 32 et 64 px, taille
   à laquelle tout texte devient illisible.
@@ -324,7 +324,7 @@ n'accepte d'ailleurs plus les soumissions d'intégrations personnalisées
 depuis cette version, et la méthode locale ne dépend d'aucune PR
 externe ni délai de fusion — l'icône est disponible dès l'installation.
 Home Assistant sert ces images via
-`/api/brands/integration/sentinelle_ecowitt/…` et leur donne priorité
+`/api/brands/integration/meteo_sentinelle/…` et leur donne priorité
 sur celles du dépôt central.
 
 Contrepartie assumée : nécessite HA ≥ 2026.3 (contrainte répercutée

@@ -16,7 +16,7 @@ from .const import DOMAIN
 from .tree import Tree
 
 
-class SentinelleTreeEntity(CoordinatorEntity):
+class MeteoSentinelleTreeEntity(CoordinatorEntity):
     """Entité rattachée à un arbre précis."""
 
     _attr_has_entity_name = True
@@ -28,7 +28,7 @@ class SentinelleTreeEntity(CoordinatorEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_{tree.subentry_id}")},
             name=tree.display_name,
-            manufacturer="Sentinelle Ecowitt",
+            manufacturer="Météo Sentinelle",
             model=tree.crop_label,
             via_device=(DOMAIN, entry.entry_id),
         )
@@ -42,7 +42,7 @@ class SentinelleTreeEntity(CoordinatorEntity):
         return super().available and self.tree is not None
 
 
-class SentinelleSiteEntity(CoordinatorEntity):
+class MeteoSentinelleSiteEntity(CoordinatorEntity):
     """Entité rattachée au site (capteurs partagés, diagnostic)."""
 
     _attr_has_entity_name = True
@@ -53,6 +53,6 @@ class SentinelleSiteEntity(CoordinatorEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
-            manufacturer="Sentinelle Ecowitt",
+            manufacturer="Météo Sentinelle",
             model="Station et moteur de prédiction",
         )

@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN
-from .entity import SentinelleTreeEntity
+from .entity import MeteoSentinelleTreeEntity
 from .models.crops import STAGE_LABELS, stage_options
 from .tree import Tree
 
@@ -37,7 +37,7 @@ async def async_setup_entry(
         )
 
 
-class PhenologyStageSelect(SentinelleTreeEntity, SelectEntity):
+class PhenologyStageSelect(MeteoSentinelleTreeEntity, SelectEntity):
     """Stade phénologique courant d'un arbre."""
 
     _attr_icon = "mdi:sprout-outline"

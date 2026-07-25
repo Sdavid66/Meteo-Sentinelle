@@ -1,49 +1,90 @@
 <p align="center">
-  <img src="images/logo.png" alt="Sentinelle Ecowitt" width="260">
+  <img src="images/logo.png" alt="Météo Sentinelle" width="260">
 </p>
 
-<h1 align="center">Sentinelle Ecowitt</h1>
+<h1 align="center">Météo Sentinelle</h1>
 
 Intégration Home Assistant, installable via **HACS**, qui prédit les
 risques de **gel** et de **maladies des plantes** (mildiou, oïdium...)
-à partir des capteurs de votre station Ecowitt déjà intégrée à Home
-Assistant, combinés aux prévisions météo.
+à partir des capteurs de **votre station météo, quelle qu'elle soit**,
+combinés aux prévisions météo.
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20the%20project-orange?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/sdavid66)
 ![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)
-![Version](https://img.shields.io/badge/version-0.4.1-blue.svg)
+![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)
 
 ## Pourquoi
 
-Une station Ecowitt donne des mesures brutes (température, humidité,
+Une station météo donne des mesures brutes (température, humidité,
 pluie, humectation foliaire...). Ce plugin les transforme en **alertes
-actionnables** : "gel probable cette nuit", "conditions favorables au
-mildiou depuis 2 jours", etc., directement utilisables dans vos
-automatisations (notification, mise en route d'un voile d'hivernage,
-arrosage préventif...).
+actionnables** : « gel probable cette nuit sur le pommier en fleur »,
+« conditions favorables au mildiou depuis 2 jours », directement
+utilisables dans vos automatisations (notification, mise en route d'un
+voile d'hivernage, traitement préventif...).
+
+## Quelle station météo ?
+
+**Peu importe la marque.** Le plugin ne parle à aucun matériel : il lit
+des **entités Home Assistant**. Toute source capable de fournir une
+température et une humidité dans Home Assistant fait l'affaire.
+
+Fonctionnent immédiatement :
+
+- une station **privée** intégrée nativement — Ecowitt, Netatmo, Davis,
+  WeatherFlow Tempest, Bresser, Acurite via un pont, Aqara, Zigbee ou
+  Z-Wave ;
+- une station **officielle ou publique** — MeteoSwiss, Met.no, Météo-France,
+  DWD, OpenWeatherMap, AccuWeather ;
+- un **assemblage de capteurs isolés** : un thermomètre Zigbee au verger
+  et un hygromètre dans la serre suffisent à démarrer.
+
+### Station non intégrée dans Home Assistant
+
+Si votre station n'a pas d'intégration native — modèle exotique,
+montage maison, matériel ancien — il suffit d'en faire entrer les
+mesures dans Home Assistant sous forme d'entités. Plusieurs voies
+existent, par ordre de simplicité :
+
+| Situation | Voie |
+|---|---|
+| La station publie en MQTT | Intégration **MQTT**, `mqtt sensor` |
+| La station expose une page ou une API HTTP | `rest` sensor, ou `scrape` |
+| Console avec logiciel type Weewx / Meteobridge | Passerelle MQTT ou export HTTP |
+| Station Ecowitt sans passerelle supportée | Protocole *custom server* d'Ecowitt vers Home Assistant |
+| Données déjà présentes mais mal formées | `template` sensor pour convertir unités ou extraire une valeur |
+| Relevés manuels ou fichier | `input_number`, ou `file`/`command_line` sensor |
+
+Dès que ces capteurs apparaissent dans Home Assistant, Météo Sentinelle
+les utilise comme n'importe quels autres — il les sélectionne dans une
+simple liste déroulante à la configuration.
+
+Le seul élément qui doit venir d'une intégration météo classique est
+l'entité **`weather.*`** fournissant les **prévisions horaires**, sur
+laquelle repose l'anticipation du gel. N'importe quelle intégration
+météo gratuite convient (Met.no est installée par défaut dans Home
+Assistant).
 
 ## Fonctionnement
 
-Le plugin **ne communique pas directement** avec votre passerelle
-Ecowitt : il réutilise les entités déjà créées par l'intégration
-Ecowitt native de Home Assistant (ou toute autre source compatible),
-ce qui le rend plus simple, plus robuste, et indépendant du modèle de
-passerelle (GW1000, GW2000, WS90...).
+Le plugin **ne communique avec aucun matériel** : il réutilise les
+entités déjà présentes dans Home Assistant. C'est ce qui le rend
+indépendant de la marque, du modèle et du protocole de votre station —
+et robuste, puisqu'il n'y a aucun pilote à maintenir.
 
 Il combine :
-- vos capteurs Ecowitt (température, humidité, vent, humectation
-  foliaire si disponible) ;
+- les capteurs de votre station (température, humidité, vent,
+  humectation foliaire si disponible) ;
 - en secours, les capteurs temps réel d'une station officielle comme
   **MeteoSwiss** (voir ci-dessous) ;
 - les prévisions d'une entité météo Home Assistant (`weather.*`) pour
   anticiper sur plusieurs heures/jours ;
-- des modèles agronomiques simplifiés pour calculer un niveau de
-  risque : `none` / `watch` / `warning` / `severe`.
+- des modèles agronomiques publiés pour calculer un niveau de risque :
+  `none` / `watch` / `warning` / `severe`.
 
 ## Support MeteoSwiss
 
 Si vous utilisez l'intégration [MeteoSwiss](https://github.com/Rudd-O/homeassistant-meteoswiss)
-(installable via HACS), vous pouvez l'associer à Sentinelle Ecowitt de
+(installable via HACS), vous pouvez l'associer à Météo Sentinelle de
 deux manières complémentaires :
 
 1. **Comme source de prévisions** — choisissez simplement son entité
@@ -53,38 +94,40 @@ deux manières complémentaires :
    vous pouvez désigner les capteurs temps réel de votre station
    MeteoSwiss (température, humidité, vent, pluie).
 
-Le principe de secours est simple : **votre station Ecowitt reste
-toujours prioritaire**. Le capteur MeteoSwiss prend automatiquement le
-relais dans deux cas :
+Le principe de secours est simple : **votre station personnelle reste
+toujours prioritaire** — un capteur au verger décrit mieux le microclimat
+de vos plantes qu'une station officielle à plusieurs kilomètres. Le
+capteur de secours prend automatiquement le relais dans deux cas :
 
 - la mesure n'existe pas chez vous (par exemple si vous n'avez pas
   d'anémomètre) ;
-- votre capteur Ecowitt tombe en panne, passe en `unavailable` ou
-  renvoie une valeur illisible.
+- votre capteur tombe en panne, passe en `unavailable` ou renvoie une
+  valeur illisible.
 
 Les prédictions continuent donc de fonctionner même si votre station
 personnelle est hors service. Une entité **Source des données**
 (`ecowitt` / `meteoswiss` / `mixed` / `unavailable`) indique à tout
 moment quelle station alimente réellement les calculs, avec le détail
 mesure par mesure en attributs — pratique pour recevoir une
-notification quand votre Ecowitt décroche.
+notification quand votre station décroche.
 
 Cette étape est entièrement facultative : si vous laissez les champs
 vides, l'intégration fonctionne comme avant, uniquement avec votre
-station Ecowitt. Et rien n'est spécifique à la Suisse — n'importe
+station personnelle. Et rien n'est spécifique à la Suisse — n'importe
 quelle autre source de capteurs Home Assistant peut servir de secours.
 
 ## Prérequis
 
 - Home Assistant 2026.3.0 ou supérieur (nécessaire pour l'icône locale).
-- Une station Ecowitt déjà intégrée (intégration native `Ecowitt` ou
-  équivalent) avec au minimum un capteur de température et d'humidité.
+- **Au minimum un capteur de température et un capteur d'humidité**
+  visibles dans Home Assistant, quelle qu'en soit la provenance (voir
+  « Quelle station météo ? » ci-dessus).
 - Une entité météo (`weather.*`) configurée pour les prévisions —
   l'intégration MeteoSwiss convient parfaitement en Suisse.
 - (Optionnel mais recommandé pour le mildiou) un capteur d'humectation
-  foliaire (ex. Ecowitt WH55).
-- (Optionnel) l'intégration MeteoSwiss, pour servir de source de
-  secours si un capteur Ecowitt tombe en panne.
+  foliaire, par exemple un Ecowitt WH55 ou tout capteur équivalent.
+- (Optionnel) une seconde source météo — MeteoSwiss ou autre — pour
+  servir de secours si un capteur de votre station tombe en panne.
 - Le **recorder** actif sur vos capteurs de température et d'humidité :
   les modèles maladie ont besoin d'environ 4 jours d'historique horaire.
   Si vous excluez ces entités du recorder, seul le modèle de gel
@@ -94,10 +137,10 @@ quelle autre source de capteurs Home Assistant peut servir de secours.
 
 1. HACS → Intégrations → menu (⋮) → **Dépôts personnalisés**.
 2. Ajouter l'URL de ce dépôt, catégorie **Intégration**.
-3. Rechercher "Sentinelle Ecowitt" et installer.
+3. Rechercher "Météo Sentinelle" et installer.
 4. Redémarrer Home Assistant.
 5. Paramètres → Appareils et services → Ajouter une intégration →
-   "Sentinelle Ecowitt".
+   "Météo Sentinelle".
 
 ## Configuration
 
@@ -105,7 +148,8 @@ La configuration sépare ce qui est **commun au site** de ce qui est
 **propre à chaque arbre**.
 
 **À l'installation — le site :**
-- le capteur de température et d'humidité de votre station ;
+- le capteur de température et d'humidité de votre station, quelle qu'en
+  soit la marque ;
 - (optionnel) vent, intensité de pluie (mm/h), humectation foliaire ;
 - l'entité météo à utiliser pour les prévisions (ex. MeteoSwiss) ;
 - les modèles de risque à activer et les notifications ;
@@ -198,15 +242,15 @@ partir du niveau « alerte » :
 
 | Événement | Émis quand |
 |---|---|
-| `sentinelle_ecowitt_risk_changed` | un niveau de risque change |
-| `sentinelle_ecowitt_stage_advanced` | un stade est avancé automatiquement |
+| `meteo_sentinelle_risk_changed` | un niveau de risque change |
+| `meteo_sentinelle_stage_advanced` | un stade est avancé automatiquement |
 
 Les données de l'événement contiennent l'arbre, l'espèce, le stade, le
 modèle, l'ancien et le nouveau niveau, un booléen `escalated` et un
 `detail` déjà rédigé.
 
 Un **blueprint** prêt à l'emploi
-(`blueprints/automation/sentinelle_ecowitt/alerte_sentinelle.yaml`) route
+(`blueprints/automation/meteo_sentinelle/alerte_sentinelle.yaml`) route
 ces événements vers le canal de votre choix, avec filtrage par niveau
 minimal et par type de risque.
 
@@ -285,11 +329,11 @@ dérivé de Gubler-Thomas. Désactivable dans les options.
 ### Suivi des traitements — « protégé jusqu'à »
 
 Un modèle dit « le risque est élevé ». Un outil de décision dit
-« traitez avant jeudi ». Le service `sentinelle_ecowitt.log_treatment`
+« traitez avant jeudi ». Le service `meteo_sentinelle.log_treatment`
 enregistre une application :
 
 ```yaml
-action: sentinelle_ecowitt.log_treatment
+action: meteo_sentinelle.log_treatment
 data:
   target: powdery_mildew
   tree: Pommier Golden du fond   # omis = tous les arbres concernés
@@ -337,6 +381,35 @@ en deçà d'un outil professionnel sur trois points :
 
 ## Mise à jour depuis une version antérieure
 
+### Depuis « Sentinelle Ecowitt » (v0.4.1 et antérieures) — action requise
+
+La v0.5.0 renomme le projet en **Météo Sentinelle** et change son
+domaine technique de `sentinelle_ecowitt` en `meteo_sentinelle`. Home
+Assistant ne sait pas migrer un domaine : **la mise à jour ne se fait
+pas toute seule**.
+
+Marche à suivre :
+
+1. Noter votre configuration actuelle (capteurs choisis, arbres, stades).
+2. Supprimer l'ancienne intégration : Paramètres → Appareils et services
+   → Sentinelle Ecowitt → supprimer.
+3. Dans HACS, supprimer l'ancien dépôt puis ajouter le nouveau
+   (`Meteo-Sentinelle`) en dépôt personnalisé, et installer.
+4. Redémarrer Home Assistant, puis ajouter « Météo Sentinelle » et
+   reconfigurer.
+
+Conséquences à connaître : les identifiants d'entités changent
+(`sensor.sentinelle_ecowitt_…` devient `sensor.meteo_sentinelle_…`), donc
+**les automatisations et cartes qui les référencent sont à mettre à
+jour**, et l'historique des anciennes entités devient orphelin. Il reste
+consultable, mais n'alimente plus les nouvelles entités.
+
+Ce renommage était le bon moment : il n'a lieu qu'une fois, et le nom
+« Ecowitt » induisait en erreur alors que le plugin fonctionne avec
+n'importe quelle station.
+
+### Entre versions de Météo Sentinelle
+
 Les installations créées avec une version 0.1 à 0.3 sont migrées
 automatiquement au premier démarrage : la culture unique que portait
 l'intégration devient votre premier arbre surveillé, avec son stade en
@@ -347,20 +420,22 @@ Si aucune culture n'était configurée, un arbre « générique » est créé
 malgré tout — sans arbre, l'intégration ne produirait plus aucune entité
 de risque.
 
-Le message `We found a custom integration sentinelle_ecowitt which has
+Le message `We found a custom integration meteo_sentinelle which has
 not been tested by Home Assistant` dans le journal est **normal** :
 Home Assistant l'émet pour toute intégration personnalisée, quelle
 qu'elle soit. Il n'indique aucun problème.
 
 ## Feuille de route
 
-- **v0.4 (actuelle)** : plusieurs arbres surveillés, chacun avec son
-  stade et ses calculs ; avancement automatique par degrés-jours ;
-  alertes par événements, notifications et blueprint.
-- v0.5 : tavelure du pommier (table de Mills), cohortes d'infection
+- v0.4 : plusieurs arbres surveillés, chacun avec son stade et ses
+  calculs ; avancement automatique par degrés-jours ; alertes par
+  événements, notifications et blueprint.
+- **v0.5 (actuelle)** : renommage en Météo Sentinelle, positionnement
+  ouvert à toute station météo, domaine `meteo_sentinelle`.
+- v0.6 : tavelure du pommier (table de Mills), cohortes d'infection
   avec latence pour le mildiou.
-- v0.6 : sensibilité variétale, agrégation de plusieurs sources météo.
-- v0.7 : ajustement du décalage de degrés-jours par apprentissage sur
+- v0.7 : sensibilité variétale, agrégation de plusieurs sources météo.
+- v0.8 : ajustement du décalage de degrés-jours par apprentissage sur
   les corrections manuelles de l'utilisateur.
 
 Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le détail des choix de
@@ -375,7 +450,7 @@ soumissions d'intégrations personnalisées). C'est la méthode que ce
 projet utilise :
 
 ```
-custom_components/sentinelle_ecowitt/brand/
+custom_components/meteo_sentinelle/brand/
 ├── icon.png      (256×256)
 ├── icon@2x.png   (512×512)
 └── icon.svg      (source, non utilisée par Home Assistant)

@@ -1,4 +1,4 @@
-"""Intégration Sentinelle Ecowitt."""
+"""Intégration Météo Sentinelle."""
 from __future__ import annotations
 
 import logging
@@ -28,7 +28,7 @@ from .const import (
     SUBENTRY_TYPE_TREE,
     TREATABLE_MODELS,
 )
-from .coordinator import SentinelleEcowittCoordinator
+from .coordinator import MeteoSentinelleCoordinator
 from .models.treatments import DEFAULT_RAINFAST_MM, DEFAULT_RESIDUAL_DAYS
 from .tree import legacy_tree_data, strip_legacy_keys
 
@@ -88,7 +88,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Entrée écrite par une version plus récente : on ne sait pas la
         # rétrograder, et écraser ses données serait pire que d'échouer.
         _LOGGER.error(
-            "Entrée créée par une version plus récente de Sentinelle Ecowitt "
+            "Entrée créée par une version plus récente de Météo Sentinelle "
             "(version %s) : rétrogradation impossible",
             entry.version,
         )
@@ -98,7 +98,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
 
     _LOGGER.info(
-        "Migration de Sentinelle Ecowitt depuis la version %s vers la version 4",
+        "Migration de Météo Sentinelle depuis la version %s vers la version 4",
         entry.version,
     )
 
@@ -129,7 +129,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    coordinator = SentinelleEcowittCoordinator(hass, entry)
+    coordinator = MeteoSentinelleCoordinator(hass, entry)
     await coordinator.async_load_state()
     await coordinator.async_config_entry_first_refresh()
 
@@ -191,7 +191,7 @@ def _async_setup_alerting(
     entry.async_on_unload(coordinator.async_add_listener(_handle_update))
 
 
-def _coordinators(hass: HomeAssistant) -> list[SentinelleEcowittCoordinator]:
+def _coordinators(hass: HomeAssistant) -> list[MeteoSentinelleCoordinator]:
     return list(hass.data.get(DOMAIN, {}).values())
 
 
