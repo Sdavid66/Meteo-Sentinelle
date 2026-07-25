@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sentinelle Ecowitt",
+        "description": "Select the entities from your existing Ecowitt station (already set up in Home Assistant) to use for predictions.",
+        "data": {
+          "name": "Name",
+          "temperature_entity": "Temperature sensor",
+          "humidity_entity": "Humidity sensor",
+          "wind_speed_entity": "Wind speed sensor (optional)",
+          "rain_rate_entity": "Rain sensor (optional)",
+          "leaf_wetness_entity": "Leaf wetness sensor (optional)",
+          "weather_entity": "Weather entity (forecast)",
+          "enabled_models": "Risk models to enable"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This instance is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update configuration",
+        "data": {
+          "temperature_entity": "Temperature sensor",
+          "humidity_entity": "Humidity sensor",
+          "wind_speed_entity": "Wind speed sensor (optional)",
+          "rain_rate_entity": "Rain sensor (optional)",
+          "leaf_wetness_entity": "Leaf wetness sensor (optional)",
+          "weather_entity": "Weather entity (forecast)",
+          "enabled_models": "Risk models to enable"
+        }
+      }
+    }
+  }
+}

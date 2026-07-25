@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sentinelle Ecowitt",
+        "description": "Sélectionnez les entités de votre station Ecowitt (déjà intégrée à Home Assistant) à utiliser pour les prédictions.",
+        "data": {
+          "name": "Nom",
+          "temperature_entity": "Capteur de température",
+          "humidity_entity": "Capteur d'humidité",
+          "wind_speed_entity": "Capteur de vent (optionnel)",
+          "rain_rate_entity": "Capteur de pluie (optionnel)",
+          "leaf_wetness_entity": "Capteur d'humectation foliaire (optionnel)",
+          "weather_entity": "Entité météo (prévisions)",
+          "enabled_models": "Modèles de risque à activer"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Cette instance est déjà configurée."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modifier la configuration",
+        "data": {
+          "temperature_entity": "Capteur de température",
+          "humidity_entity": "Capteur d'humidité",
+          "wind_speed_entity": "Capteur de vent (optionnel)",
+          "rain_rate_entity": "Capteur de pluie (optionnel)",
+          "leaf_wetness_entity": "Capteur d'humectation foliaire (optionnel)",
+          "weather_entity": "Entité météo (prévisions)",
+          "enabled_models": "Modèles de risque à activer"
+        }
+      }
+    }
+  }
+}
