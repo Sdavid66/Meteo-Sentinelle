@@ -423,4 +423,4 @@ tomates !), vous pouvez m'offrir un café :
 
 ## Licence
 
-MIT — voir [LICENSE](LICENSE).
+GPL-3.0 — voir [LICENSE](LICENSE). Le code reste libre : vous pouvez l'utiliser, le modifier et le redistribuer, à condition que toute version dérivée reste elle aussi open source sous la même licence.
