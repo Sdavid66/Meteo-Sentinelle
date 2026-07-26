@@ -6,6 +6,11 @@ et ne se révèlent qu'en production : version d'entrée sans migration,
 clé de traduction manquante, service non déclaré, icône absente.
 
     python3 check_integration.py <chemin-du-depot>
+    python3 check_integration.py <chemin-du-depot> --publish
+
+Le mode --publish ajoute les critères d'acceptation du magasin HACS par
+défaut qui sont vérifiables hors ligne, et rappelle ceux qui dépendent de
+GitHub et doivent être contrôlés à la main.
 
 Sortie 0 si tout passe, 1 s'il reste une erreur. Les avertissements
 n'échouent pas la commande.
@@ -18,6 +23,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -44,6 +50,20 @@ MANIFEST_REQUIRED = [
     "issue_tracker",
     "codeowners",
 ]
+
+# Clés documentées de hacs.json. Les autres sont ignorées par HACS, mais
+# leur présence trahit souvent un exemple obsolète recopié tel quel.
+HACS_JSON_KEYS = {
+    "name",
+    "homeassistant",
+    "hacs",
+    "country",
+    "persistent_directory",
+    "content_in_root",
+    "zip_release",
+    "filename",
+    "hide_default_branch",
+}
 
 
 def error(message: str) -> None:
@@ -138,8 +158,32 @@ def check_hacs_json(root: Path, integration: Path) -> None:
     hacs = load_json(root / "hacs.json")
     if hacs is None:
         return
+
+    # « name » est la seule clé obligatoire, et un contrôle automatique de
+    # la soumission la vérifie explicitement.
     if "name" not in hacs:
-        warn("hacs.json : « name » est recommandé.")
+        error("hacs.json : « name » est la seule clé obligatoire et elle manque.")
+    else:
+        ok("hacs.json : « name » présent")
+
+    unknown = set(hacs) - HACS_JSON_KEYS
+    if unknown:
+        warn(
+            "hacs.json : clé(s) non documentée(s), probablement issue(s) d'un "
+            f"exemple obsolète — {', '.join(sorted(unknown))}"
+        )
+
+    country = hacs.get("country")
+    if country is not None:
+        values = country if isinstance(country, list) else [country]
+        bad = [c for c in values if not (isinstance(c, str) and len(c) == 2)]
+        if bad:
+            error(
+                "hacs.json : « country » attend des codes ISO 3166-1 alpha-2 "
+                f"à deux lettres — {bad}"
+            )
+        else:
+            ok("hacs.json : « country » au bon format")
 
     minimum = hacs.get("homeassistant")
     brand = integration / "brand"
@@ -433,23 +477,147 @@ def check_syntax(integration: Path) -> None:
 
 
 # ----------------------------------------------------------------------
+# Mode --publish : critères du magasin HACS par défaut
+# ----------------------------------------------------------------------
+
+
+def check_documentation_files(root: Path) -> None:
+    readme = next((p for p in root.glob("README*") if p.is_file()), None)
+    if readme is None:
+        error("README absent : HACS l'exige pour toute soumission.")
+    elif len(readme.read_text(encoding="utf-8", errors="replace").strip()) < 200:
+        warn("Le README semble très court pour documenter l'usage.")
+    else:
+        ok(f"{readme.name} présent")
+
+    if not any(root.glob("LICENSE*")):
+        warn("LICENSE absent : fortement recommandé pour un dépôt public.")
+    else:
+        ok("LICENSE présent")
+
+
+def check_workflows(root: Path) -> None:
+    """Les deux actions doivent exister et passer sans exclusion."""
+    workflows = root / ".github" / "workflows"
+    if not workflows.is_dir():
+        error(
+            ".github/workflows/ absent : les actions hassfest et HACS sont "
+            "exigées pour la soumission au magasin par défaut."
+        )
+        return
+
+    content = "\n".join(
+        path.read_text(encoding="utf-8", errors="replace")
+        for path in workflows.glob("*.y*ml")
+    )
+
+    if "hacs/action" not in content:
+        error("Workflow manquant : l'action HACS (hacs/action) est exigée.")
+    else:
+        ok("Workflow HACS présent")
+
+    if "hassfest" not in content:
+        error("Workflow manquant : l'action hassfest est exigée pour les intégrations.")
+    else:
+        ok("Workflow hassfest présent")
+
+    if re.search(r"^\s*ignore:", content, re.M):
+        error(
+            "L'action HACS utilise « ignore » : la soumission exige qu'elle passe "
+            "sans aucune exclusion. Retirer ce paramètre et corriger la cause."
+        )
+    elif "hacs/action" in content:
+        ok("L'action HACS ne masque aucun contrôle")
+
+    # Créer la release à la main expose à deux oublis : croire qu'un tag
+    # suffit, et taguer sans avoir incrémenté le manifest.
+    if re.search(r"tags:\s*\n\s*-", content) or "gh release create" in content:
+        ok("Workflow de publication automatique des releases présent")
+    else:
+        warn(
+            "Aucun workflow ne crée la release au push d'un tag : la publication "
+            "reste manuelle, et rien ne vérifie que le tag correspond à la version "
+            "du manifest."
+        )
+
+
+def check_release_version(root: Path, manifest: dict) -> None:
+    """Compare la version du manifest au dernier tag Git, si disponible."""
+    version = manifest.get("version")
+    if not version:
+        return
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "tag", "--sort=-creatordate"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    if result.returncode != 0:
+        return
+
+    tags = [t.strip() for t in result.stdout.splitlines() if t.strip()]
+    if not tags:
+        warn(
+            "Aucun tag Git : HACS exige au moins une release publiée "
+            "(un tag seul ne suffit pas, il faut une release GitHub)."
+        )
+        return
+
+    latest = tags[0].lstrip("vV")
+    if latest != str(version):
+        warn(
+            f"Le dernier tag ({tags[0]}) ne correspond pas à la version du manifest "
+            f"({version}) : penser à publier une release pour cette version."
+        )
+    else:
+        ok(f"Version du manifest alignée sur le dernier tag ({tags[0]})")
+
+
+MANUAL_CHECKLIST = [
+    "le dépôt est public et non archivé",
+    "le dépôt a une description",
+    "le dépôt a des topics",
+    "les issues sont activées",
+    "une release GitHub complète existe, créée APRÈS le passage des workflows",
+    "la soumission se fait par pull request sur hacs/default (pas par une issue)",
+    "la ligne est insérée par ordre alphabétique dans le fichier ./integration",
+    "la PR part d'une branche dédiée d'un fork personnel, pas d'une organisation",
+]
+
+
+def publish_checklist() -> None:
+    print("\nÀ vérifier à la main (dépend de GitHub, non contrôlable hors ligne) :")
+    for item in MANUAL_CHECKLIST:
+        print(f"  [ ] {item}")
+
+
+# ----------------------------------------------------------------------
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = {a for a in sys.argv[1:] if a.startswith("--")}
+
+    if not args:
         print(__doc__)
         return 2
 
-    root = Path(sys.argv[1]).resolve()
+    publish = "--publish" in flags
+
+    root = Path(args[0]).resolve()
     if not root.is_dir():
         print(f"Chemin introuvable : {root}")
         return 2
 
-    print(f"Contrôle de {root}\n")
+    mode = " (mode publication)" if publish else ""
+    print(f"Contrôle de {root}{mode}\n")
 
     integration = find_integration(root)
     if integration is not None:
-        check_manifest(integration)
+        manifest = check_manifest(integration)
         check_hacs_json(root, integration)
         check_module_functions(integration)
         check_migration(integration)
@@ -458,6 +626,11 @@ def main() -> int:
         check_services(integration)
         check_brand(integration)
         check_syntax(integration)
+
+        if publish:
+            check_documentation_files(root)
+            check_workflows(root)
+            check_release_version(root, manifest)
 
     for message in PASSED:
         print(f"  ok       {message}")
@@ -470,6 +643,10 @@ def main() -> int:
         f"\n{len(PASSED)} contrôle(s) passé(s), "
         f"{len(WARNINGS)} avertissement(s), {len(ERRORS)} erreur(s)."
     )
+
+    if publish:
+        publish_checklist()
+
     return 1 if ERRORS else 0
 
 
