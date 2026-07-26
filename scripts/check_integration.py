@@ -208,6 +208,99 @@ def check_hacs_json(root: Path, integration: Path) -> None:
 
 
 # ----------------------------------------------------------------------
+# Dépendances (reproduit la logique de hassfest/dependencies.py)
+# ----------------------------------------------------------------------
+
+#: Toujours autorisés sans déclaration : intégrations core (chargées
+#: inconditionnellement) et noms de plateformes (sensor.py qui importe
+#: homeassistant.components.sensor n'est pas une dépendance externe).
+_DEPENDENCY_ALLOWED = {
+    "homeassistant",
+    "persistent_notification",
+    "sensor",
+    "switch",
+    "select",
+    "binary_sensor",
+    "number",
+    "button",
+    "climate",
+    "cover",
+    "fan",
+    "light",
+    "lock",
+    "siren",
+    "text",
+    "update",
+    "vacuum",
+    "valve",
+    "water_heater",
+    "camera",
+    "alarm_control_panel",
+    "device_tracker",
+    "event",
+    "humidifier",
+    "image",
+    "notify",
+    "remote",
+    "scene",
+    "todo",
+    "weather",
+}
+
+
+def _referenced_components(integration: Path) -> set[str]:
+    """Domaines importés via homeassistant.components.<domaine>."""
+    referenced: set[str] = set()
+    for path in integration.glob("**/*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module.startswith("homeassistant.components."):
+                    referenced.add(node.module.split(".")[2])
+                elif node.module == "homeassistant.components":
+                    referenced.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("homeassistant.components."):
+                        referenced.add(alias.name.split(".")[2])
+    return referenced
+
+
+def check_dependencies(integration: Path, manifest: dict) -> None:
+    """Un import de homeassistant.components.X non déclaré casse hassfest.
+
+    C'est le contrôle « dependencies » de hassfest : importer un module
+    d'une autre intégration (ex. recorder pour lire l'historique) exige de
+    la lister dans manifest.json, sous « dependencies » (toujours chargée
+    avec l'intégration) ou « after_dependencies » (chargée si présente,
+    l'intégration doit tolérer son absence). Sans cela, hassfest échoue
+    avec : « Using component X but it's not in 'dependencies' or
+    'after_dependencies' ».
+    """
+    if not manifest:
+        return
+
+    declared = set(manifest.get("dependencies", [])) | set(
+        manifest.get("after_dependencies", [])
+    )
+    referenced = _referenced_components(integration)
+    missing = sorted(referenced - declared - {integration.name} - _DEPENDENCY_ALLOWED)
+
+    if missing:
+        error(
+            "manifest.json : composant(s) importé(s) mais non déclaré(s) — "
+            f"{', '.join(missing)}. Ajouter à « dependencies » (chargement "
+            "obligatoire) ou « after_dependencies » (optionnel, à condition "
+            "que le code tolère son absence)."
+        )
+    else:
+        ok("manifest.json : tous les composants importés sont déclarés")
+
+
+# ----------------------------------------------------------------------
 # Migrations
 # ----------------------------------------------------------------------
 
@@ -619,6 +712,7 @@ def main() -> int:
     if integration is not None:
         manifest = check_manifest(integration)
         check_hacs_json(root, integration)
+        check_dependencies(integration, manifest)
         check_module_functions(integration)
         check_migration(integration)
         check_deprecated_patterns(integration)
