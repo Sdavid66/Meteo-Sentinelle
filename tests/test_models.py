@@ -749,6 +749,50 @@ else:
         check(_events <= _KNOWN_EVENTS,
               f"{_label} : n'écoute que des événements réellement émis")
 
+
+    # Les blueprints existent en paires anglais/français. La duplication
+    # n'est tenable que si les deux versions restent structurellement
+    # identiques : mêmes entrées, mêmes valeurs par défaut, mêmes
+    # déclencheurs. Seul le texte doit différer.
+    _PAIRS = [
+        ("frost_protection.yaml", "protection_gel.yaml"),
+        ("risk_alerts.yaml", "alerte_meteo_sentinelle.yaml"),
+    ]
+
+    def _structure(doc):
+        meta = doc.get("blueprint", {})
+        inputs = {}
+        for key, value in (meta.get("input") or {}).items():
+            if isinstance(value, dict) and "input" in value:
+                for sub, cfg in value["input"].items():
+                    inputs[sub] = (cfg or {}).get("default", "__required__")
+            else:
+                inputs[key] = (value or {}).get("default", "__required__")
+        events = sorted(
+            t.get("event_type")
+            for t in (doc.get("triggers") or [])
+            if isinstance(t, dict) and t.get("trigger") == "event"
+        )
+        return inputs, events, doc.get("mode")
+
+    for _en_name, _fr_name in _PAIRS:
+        _en_path, _fr_path = _BP_DIR / _en_name, _BP_DIR / _fr_name
+        check(_en_path.exists() and _fr_path.exists(),
+              f"{_en_name} et {_fr_name} existent tous les deux")
+        if not (_en_path.exists() and _fr_path.exists()):
+            continue
+
+        _en = _yaml.load(_en_path.read_text(encoding="utf-8"), Loader=_BlueprintLoader)
+        _fr = _yaml.load(_fr_path.read_text(encoding="utf-8"), Loader=_BlueprintLoader)
+        _en_struct, _fr_struct = _structure(_en), _structure(_fr)
+
+        check(_en_struct[0] == _fr_struct[0],
+              f"{_en_name} / {_fr_name} : mêmes entrées et mêmes valeurs par défaut")
+        check(_en_struct[1] == _fr_struct[1],
+              f"{_en_name} / {_fr_name} : mêmes événements écoutés")
+        check(_en_struct[2] == _fr_struct[2],
+              f"{_en_name} / {_fr_name} : même mode d'exécution")
+
     # Les événements écoutés doivent correspondre aux constantes du code.
     check({const.EVENT_RISK_CHANGED, const.EVENT_STAGE_ADVANCED} == _KNOWN_EVENTS,
           "les événements des blueprints correspondent à ceux de const.py")

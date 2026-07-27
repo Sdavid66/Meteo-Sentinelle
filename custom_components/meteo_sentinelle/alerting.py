@@ -32,21 +32,17 @@ from .const import (
     RISK_SEVERE,
     RISK_WARNING,
 )
-from .models.crops import STAGE_LABELS
+from .localize import Translator
 
 _LOGGER = logging.getLogger(__name__)
 
-MODEL_LABELS = {
-    MODEL_FROST: "gel",
-    MODEL_LATE_BLIGHT: "mildiou",
-    MODEL_POWDERY_MILDEW: "oïdium",
-}
-
-LEVEL_LABELS = {
-    "none": "aucun risque",
-    "watch": "à surveiller",
-    "warning": "alerte",
-    "severe": "risque sévère",
+#: Chaque modèle emprunte son intitulé au capteur correspondant, déjà
+#: traduit : « Risque de gel » / « Frost risk ». Une table de libellés en
+#: dur ici retomberait dans le travers d'une seule langue.
+MODEL_ENTITY_KEYS = {
+    MODEL_FROST: "frost_risk",
+    MODEL_LATE_BLIGHT: "late_blight_risk",
+    MODEL_POWDERY_MILDEW: "powdery_mildew_risk",
 }
 
 #: Niveaux justifiant une notification (les autres restent en événement).
@@ -60,51 +56,59 @@ def _rank(level: str) -> int:
         return 0
 
 
-def _frost_detail(result) -> str:
+def _frost_detail(result, tr: Translator) -> str:
     """Phrase explicative pour une alerte gel, avec le contexte utile."""
     parts: list[str] = []
     reference = getattr(result, "reference_min", None)
     if reference is not None:
-        where = (
-            "au niveau du sol"
+        key = (
+            "detail_frost_min_ground"
             if getattr(result, "reference", "air") == "surface"
-            else "sous abri"
+            else "detail_frost_min_air"
         )
-        parts.append(f"minimum attendu {reference:.1f} °C {where}")
+        parts.append(tr.text(key, temperature=f"{reference:.1f}"))
     t10 = getattr(result, "t10", None)
     if t10 is not None:
-        parts.append(f"seuil de dégâts {t10:.1f} °C")
+        parts.append(tr.text("detail_frost_threshold", temperature=f"{t10:.1f}"))
     when = getattr(result, "next_frost_time", None)
     if when is not None:
-        parts.append(f"vers {when.strftime('%d/%m %Hh')}")
+        parts.append(tr.text("detail_frost_time", time=when.strftime("%d/%m %H:%M")))
     return ", ".join(parts)
 
 
-def _disease_detail(model: str, result) -> str:
+def _disease_detail(model: str, result, tr: Translator) -> str:
     if model == MODEL_LATE_BLIGHT:
         bits = []
         if getattr(result, "hutton_met", False):
-            bits.append("critères de Hutton remplis")
+            bits.append(tr.text("detail_blight_hutton"))
         elif getattr(result, "hutton_consecutive_days", 0):
-            bits.append("une journée favorable")
+            bits.append(tr.text("detail_blight_one_day"))
         hours = getattr(result, "last_day_wet_hours", None)
         if hours:
-            bits.append(f"{hours} h d'humidité continue hier")
+            bits.append(tr.text("detail_blight_wet_hours", hours=hours))
         return ", ".join(bits)
     if model == MODEL_POWDERY_MILDEW:
         index = getattr(result, "index", None)
         interval = getattr(result, "spray_interval_days", None)
         bits = []
         if index is not None:
-            bits.append(f"indice {index}/100")
+            bits.append(tr.text("detail_mildew_index", index=index))
         if interval:
-            bits.append(f"intervalle conseillé {interval} jours")
+            bits.append(tr.text("detail_mildew_interval", days=interval))
         return ", ".join(bits)
     return ""
 
 
-def build_risk_payload(tree, model: str, previous: str | None, result) -> dict:
-    """Contenu de l'événement émis à chaque changement de niveau."""
+def build_risk_payload(
+    tree, model: str, previous: str | None, result, tr: Translator
+) -> dict:
+    """Contenu de l'événement émis à chaque changement de niveau.
+
+    Les clés `*_label` portent le texte déjà traduit, pour que les
+    automatisations et blueprints puissent l'afficher tel quel ; les clés
+    sans suffixe portent la valeur technique, stable quelle que soit la
+    langue, pour les comparaisons.
+    """
     level = getattr(result, "level", None)
     payload = {
         "tree": tree.display_name,
@@ -112,21 +116,21 @@ def build_risk_payload(tree, model: str, previous: str | None, result) -> dict:
         "crop": tree.crop,
         "crop_label": tree.crop_label,
         "stage": tree.stage,
-        "stage_label": tree.stage_label,
+        "stage_label": tr.stage(tree.stage),
         "model": model,
-        "model_label": MODEL_LABELS.get(model, model),
+        "model_label": tr.name("sensor", MODEL_ENTITY_KEYS.get(model, model)),
         "level": level,
-        "level_label": LEVEL_LABELS.get(level, level),
+        "level_label": tr.risk_level(level),
         "previous_level": previous,
         "escalated": _rank(level or "none") > _rank(previous or "none"),
     }
     if model == MODEL_FROST:
-        payload["detail"] = _frost_detail(result)
+        payload["detail"] = _frost_detail(result, tr)
         payload["t10"] = getattr(result, "t10", None)
         payload["t90"] = getattr(result, "t90", None)
         payload["reference_min"] = getattr(result, "reference_min", None)
     else:
-        payload["detail"] = _disease_detail(model, result)
+        payload["detail"] = _disease_detail(model, result, tr)
     return payload
 
 
@@ -134,6 +138,7 @@ def process_risk_changes(
     hass: HomeAssistant, coordinator, notifications_enabled: bool
 ) -> None:
     """Compare les niveaux au cycle précédent et alerte si nécessaire."""
+    tr = Translator(hass)
     for subentry_id, results in (coordinator.data or {}).items():
         tree = coordinator.tree(subentry_id)
         if tree is None:
@@ -148,7 +153,7 @@ def process_risk_changes(
                 continue
 
             tree.last_levels[model] = level
-            payload = build_risk_payload(tree, model, previous, result)
+            payload = build_risk_payload(tree, model, previous, result, tr)
             hass.bus.async_fire(EVENT_RISK_CHANGED, payload)
 
             # On ne notifie qu'à l'aggravation, et seulement à partir de
@@ -158,21 +163,25 @@ def process_risk_changes(
                 and level in NOTIFY_LEVELS
                 and payload["escalated"]
             ):
-                _notify_risk(hass, coordinator, payload)
+                _notify_risk(hass, payload, tr)
 
 
-def _notify_risk(hass: HomeAssistant, coordinator, payload: dict) -> None:
-    title = f"{payload['tree']} — {payload['model_label']} : {payload['level_label']}"
+def _notify_risk(hass: HomeAssistant, payload: dict, tr: Translator) -> None:
+    title = tr.text(
+        "notify_risk_title",
+        tree=payload["tree"],
+        model=payload["model_label"],
+        level=payload["level_label"],
+    )
     lines = []
     if payload.get("stage_label"):
-        lines.append(f"Stade : {payload['stage_label']}")
+        lines.append(tr.text("notify_stage_line", stage=payload["stage_label"]))
     if payload.get("detail"):
         lines.append(payload["detail"])
     lines.append(
-        "Ces modèles sont indicatifs et supposent le pathogène présent ; "
-        "ils ne remplacent pas une observation sur place."
-        if payload["model"] != MODEL_FROST
-        else "Vérifiez la prévision avant d'engager une protection."
+        tr.text("notify_frost_caveat")
+        if payload["model"] == MODEL_FROST
+        else tr.text("notify_disease_caveat")
     )
     persistent_notification.async_create(
         hass,
@@ -188,32 +197,33 @@ def process_stage_advances(
     hass: HomeAssistant, coordinator, notifications_enabled: bool
 ) -> None:
     """Émet événement et notification pour chaque stade avancé automatiquement."""
+    tr = Translator(hass)
     for advance in coordinator.pending_advances:
         hass.bus.async_fire(EVENT_STAGE_ADVANCED, advance)
 
         if not notifications_enabled:
             continue
 
-        stage_label = STAGE_LABELS.get(advance["stage"], advance["stage"])
+        stage_label = tr.stage(advance["stage"])
         previous_label = (
-            STAGE_LABELS.get(advance["previous_stage"], advance["previous_stage"])
+            tr.stage(advance["previous_stage"])
             if advance.get("previous_stage")
-            else "non renseigné"
+            else tr.text("stage_not_set")
         )
         persistent_notification.async_create(
             hass,
-            (
-                f"Le stade est passé de « {previous_label} » à "
-                f"« {stage_label} » d'après le cumul de degrés-jours "
-                f"({advance['gdd']} °C·j).\n\n"
-                "Ce changement a été appliqué automatiquement et modifie les "
-                "seuils de gel utilisés pour cet arbre. Si l'observation sur "
-                "place ne correspond pas, corrigez le stade depuis l'entité "
-                "« Stade phénologique » : votre correction fait autorité. "
-                "Vous pouvez aussi désactiver l'avancement automatique pour "
-                "cet arbre."
+            "\n\n".join(
+                (
+                    tr.text(
+                        "notify_stage_change",
+                        previous=previous_label,
+                        stage=stage_label,
+                        gdd=advance["gdd"],
+                    ),
+                    tr.text("notify_stage_advice"),
+                )
             ),
-            title=f"{advance['tree']} — stade avancé automatiquement",
+            title=tr.text("notify_stage_title", tree=advance["tree"]),
             notification_id=f"{DOMAIN}_{advance['subentry_id']}_stage",
         )
     coordinator.pending_advances = []

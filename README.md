@@ -4,469 +4,458 @@
 
 <h1 align="center">Météo Sentinelle</h1>
 
-Intégration Home Assistant, installable via **HACS**, qui prédit les
-risques de **gel** et de **maladies des plantes** (mildiou, oïdium...)
-à partir des capteurs de **votre station météo, quelle qu'elle soit**,
-combinés aux prévisions météo.
-Si vous le souhaitez, vous pouvez me donner un peu de courage en me payant un café :-). 
+<p align="center">
+  <b>English</b> · <a href="README.fr.md">Français</a>
+</p>
+
+A Home Assistant integration, installable through **HACS**, that predicts
+**frost** and **plant disease** risk (late blight, powdery mildew...)
+from the sensors of **your weather station, whatever it is**, combined
+with weather forecasts.
+
+If you find it useful, you can buy me a coffee :-).
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20the%20project-orange?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/sdavid66)
 ![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)
 ![Version](https://img.shields.io/github/v/release/Sdavid66/Meteo-Sentinelle?label=version&color=blue)
 
-## Pourquoi
+## Why
 
-Une station météo donne des mesures brutes (température, humidité,
-pluie, humectation foliaire...). Ce plugin les transforme en **alertes
-actionnables** : « gel probable cette nuit sur le pommier en fleur »,
-« conditions favorables au mildiou depuis 2 jours », directement
-utilisables dans vos automatisations (notification, mise en route d'un
-voile d'hivernage, traitement préventif...).
+A weather station gives you raw measurements (temperature, humidity,
+rain, leaf wetness...). This integration turns them into **actionable
+alerts**: "frost likely tonight on the apple tree in bloom", "conditions
+favourable to late blight for 2 days" — ready to use in your automations
+(notification, switching on a frost cover, preventive treatment...).
 
-## Quelle station météo ?
+## Which weather station?
 
-**Peu importe la marque.** Le plugin ne parle à aucun matériel : il lit
-des **entités Home Assistant**. Toute source capable de fournir une
-température et une humidité dans Home Assistant fait l'affaire.
+**The brand does not matter.** The integration talks to no hardware at
+all: it reads **Home Assistant entities**. Any source able to provide a
+temperature and a humidity in Home Assistant will do.
 
-Fonctionnent immédiatement :
+Works right away with:
 
-- une station **privée** intégrée nativement — Ecowitt, Netatmo, Davis,
-  WeatherFlow Tempest, Bresser, Acurite via un pont, Aqara, Zigbee ou
-  Z-Wave ;
-- une station **officielle ou publique** — MeteoSwiss, Met.no, Météo-France,
-  DWD, OpenWeatherMap, AccuWeather ;
-- un **assemblage de capteurs isolés** : un thermomètre Zigbee au verger
-  et un hygromètre dans la serre suffisent à démarrer.
+- a **private** station with a native integration — Ecowitt, Netatmo,
+  Davis, WeatherFlow Tempest, Bresser, Acurite through a bridge, Aqara,
+  Zigbee or Z-Wave;
+- an **official or public** station — MeteoSwiss, Met.no, Météo-France,
+  DWD, OpenWeatherMap, AccuWeather;
+- a **handful of standalone sensors**: one Zigbee thermometer in the
+  orchard and one hygrometer in the greenhouse are enough to start.
 
-### Station non intégrée dans Home Assistant
+### Station with no Home Assistant integration
 
-Si votre station n'a pas d'intégration native — modèle exotique,
-montage maison, matériel ancien — il suffit d'en faire entrer les
-mesures dans Home Assistant sous forme d'entités. Plusieurs voies
-existent, par ordre de simplicité :
+If your station has no native integration — exotic model, home-built
+rig, older hardware — you only need to get its measurements into Home
+Assistant as entities. Several routes exist, easiest first:
 
-| Situation | Voie |
+| Situation | Route |
 |---|---|
-| La station publie en MQTT | Intégration **MQTT**, `mqtt sensor` |
-| La station expose une page ou une API HTTP | `rest` sensor, ou `scrape` |
-| Console avec logiciel type Weewx / Meteobridge | Passerelle MQTT ou export HTTP |
-| Station Ecowitt sans passerelle supportée | Protocole *custom server* d'Ecowitt vers Home Assistant |
-| Données déjà présentes mais mal formées | `template` sensor pour convertir unités ou extraire une valeur |
-| Relevés manuels ou fichier | `input_number`, ou `file`/`command_line` sensor |
+| The station publishes over MQTT | **MQTT** integration, `mqtt sensor` |
+| The station exposes an HTTP page or API | `rest` sensor, or `scrape` |
+| Console running Weewx / Meteobridge | MQTT bridge or HTTP export |
+| Ecowitt station without a supported gateway | Ecowitt *custom server* protocol into Home Assistant |
+| Data already present but badly shaped | `template` sensor to convert units or extract a value |
+| Manual readings or a file | `input_number`, or `file` / `command_line` sensor |
 
-Dès que ces capteurs apparaissent dans Home Assistant, Météo Sentinelle
-les utilise comme n'importe quels autres — il les sélectionne dans une
-simple liste déroulante à la configuration.
+As soon as those sensors show up in Home Assistant, Météo Sentinelle
+uses them like any others — you pick them from a dropdown during setup.
 
-Le seul élément qui doit venir d'une intégration météo classique est
-l'entité **`weather.*`** fournissant les **prévisions horaires**, sur
-laquelle repose l'anticipation du gel. N'importe quelle intégration
-météo gratuite convient (Met.no est installée par défaut dans Home
-Assistant).
+The only thing that must come from a regular weather integration is the
+**`weather.*`** entity providing **hourly forecasts**, which frost
+anticipation relies on. Any free weather integration will do (Met.no is
+installed by default in Home Assistant).
 
-## Fonctionnement
+## How it works
 
-Le plugin **ne communique avec aucun matériel** : il réutilise les
-entités déjà présentes dans Home Assistant. C'est ce qui le rend
-indépendant de la marque, du modèle et du protocole de votre station —
-et robuste, puisqu'il n'y a aucun pilote à maintenir.
+The integration **communicates with no hardware**: it reuses entities
+already present in Home Assistant. That is what makes it independent of
+your station's brand, model and protocol — and robust, since there is no
+driver to maintain.
 
-Il combine :
-- les capteurs de votre station (température, humidité, vent,
-  humectation foliaire si disponible) ;
-- en secours, les capteurs temps réel d'une station officielle comme
-  **MeteoSwiss** (voir ci-dessous) ;
-- les prévisions d'une entité météo Home Assistant (`weather.*`) pour
-  anticiper sur plusieurs heures/jours ;
-- des modèles agronomiques publiés pour calculer un niveau de risque :
+It combines:
+- your station's sensors (temperature, humidity, wind, leaf wetness if
+  available);
+- as a fallback, the real-time sensors of an official station such as
+  **MeteoSwiss** (see below);
+- the forecasts of a Home Assistant weather entity (`weather.*`) to look
+  several hours or days ahead;
+- published agronomic models to compute a risk level:
   `none` / `watch` / `warning` / `severe`.
 
-## Support MeteoSwiss
+## MeteoSwiss support
 
-Si vous utilisez l'intégration [MeteoSwiss](https://github.com/Rudd-O/homeassistant-meteoswiss)
-(installable via HACS), vous pouvez l'associer à Météo Sentinelle de
-deux manières complémentaires :
+If you use the [MeteoSwiss](https://github.com/Rudd-O/homeassistant-meteoswiss)
+integration (installable through HACS), you can pair it with Météo
+Sentinelle in two complementary ways:
 
-1. **Comme source de prévisions** — choisissez simplement son entité
-   `weather.*` à l'étape de configuration. C'est elle qui alimente le
-   modèle de gel avec les prévisions horaires officielles suisses.
-2. **Comme source de secours** — à la deuxième étape du config flow,
-   vous pouvez désigner les capteurs temps réel de votre station
-   MeteoSwiss (température, humidité, vent, pluie).
+1. **As a forecast source** — simply pick its `weather.*` entity during
+   setup. It feeds the frost model with official Swiss hourly forecasts.
+2. **As a fallback source** — on the second step of the config flow, you
+   can point to the real-time sensors of your MeteoSwiss station
+   (temperature, humidity, wind, rain).
 
-Le principe de secours est simple : **votre station personnelle reste
-toujours prioritaire** — un capteur au verger décrit mieux le microclimat
-de vos plantes qu'une station officielle à plusieurs kilomètres. Le
-capteur de secours prend automatiquement le relais dans deux cas :
+The fallback principle is simple: **your own station always takes
+priority** — a sensor in the orchard describes your plants' microclimate
+better than an official station several kilometres away. The fallback
+sensor takes over automatically in two cases:
 
-- la mesure n'existe pas chez vous (par exemple si vous n'avez pas
-  d'anémomètre) ;
-- votre capteur tombe en panne, passe en `unavailable` ou renvoie une
-  valeur illisible.
+- the measurement does not exist on your side (for instance if you have
+  no anemometer);
+- your sensor fails, goes `unavailable`, or returns an unreadable value.
 
-Les prédictions continuent donc de fonctionner même si votre station
-personnelle est hors service. Une entité **Source des données**
-(`ecowitt` / `meteoswiss` / `mixed` / `unavailable`) indique à tout
-moment quelle station alimente réellement les calculs, avec le détail
-mesure par mesure en attributs — pratique pour recevoir une
-notification quand votre station décroche.
+Predictions therefore keep working even when your own station is down. A
+**Data source** entity (`ecowitt` / `meteoswiss` / `mixed` /
+`unavailable`) shows at any moment which station actually feeds the
+calculations, with a measurement-by-measurement breakdown in attributes
+— handy to get notified when your station drops out.
 
-Cette étape est entièrement facultative : si vous laissez les champs
-vides, l'intégration fonctionne comme avant, uniquement avec votre
-station personnelle. Et rien n'est spécifique à la Suisse — n'importe
-quelle autre source de capteurs Home Assistant peut servir de secours.
+This step is entirely optional: leave the fields empty and the
+integration behaves as before, using only your own station. And nothing
+here is Swiss-specific — any other Home Assistant sensor source can act
+as the fallback.
 
-## Prérequis
+## Requirements
 
-- Home Assistant 2026.3.0 ou supérieur (nécessaire pour l'icône locale).
-- **Au minimum un capteur de température et un capteur d'humidité**
-  visibles dans Home Assistant, quelle qu'en soit la provenance (voir
-  « Quelle station météo ? » ci-dessus).
-- Une entité météo (`weather.*`) configurée pour les prévisions —
-  l'intégration MeteoSwiss convient parfaitement en Suisse.
-- (Optionnel mais recommandé pour le mildiou) un capteur d'humectation
-  foliaire, par exemple un Ecowitt WH55 ou tout capteur équivalent.
-- (Optionnel) une seconde source météo — MeteoSwiss ou autre — pour
-  servir de secours si un capteur de votre station tombe en panne.
-- Le **recorder** actif sur vos capteurs de température et d'humidité :
-  les modèles maladie ont besoin d'environ 4 jours d'historique horaire.
-  Si vous excluez ces entités du recorder, seul le modèle de gel
-  fonctionnera.
+- Home Assistant 2026.3.0 or newer (needed for the local icon).
+- **At least a temperature sensor and a humidity sensor** visible in
+  Home Assistant, whatever their origin (see "Which weather station?"
+  above).
+- A weather entity (`weather.*`) configured for forecasts.
+- (Optional, but recommended for late blight) a leaf wetness sensor, for
+  example an Ecowitt WH55 or any equivalent.
+- (Optional) a second weather source — MeteoSwiss or another — to act as
+  a fallback if one of your station's sensors fails.
+- The **recorder** enabled on your temperature and humidity sensors: the
+  disease models need roughly 4 days of hourly history. If you exclude
+  those entities from the recorder, only the frost model will work.
 
-## Installation via HACS
+## Installing through HACS
 
-1. HACS → Intégrations → menu (⋮) → **Dépôts personnalisés**.
-2. Ajouter l'URL de ce dépôt, catégorie **Intégration**.
-3. Rechercher "Météo Sentinelle" et installer.
-4. Redémarrer Home Assistant.
-5. Paramètres → Appareils et services → Ajouter une intégration →
-   "Météo Sentinelle".
+1. HACS → Integrations → menu (⋮) → **Custom repositories**.
+2. Add the URL of this repository, category **Integration**.
+3. Search for "Météo Sentinelle" and install it.
+4. Restart Home Assistant.
+5. Settings → Devices & services → Add integration → "Météo Sentinelle".
 
 ## Configuration
 
-La configuration sépare ce qui est **commun au site** de ce qui est
-**propre à chaque arbre**.
+Configuration separates what is **shared across the site** from what
+belongs to **each individual tree**.
 
-**À l'installation — le site :**
-- le capteur de température et d'humidité de votre station, quelle qu'en
-  soit la marque ;
-- (optionnel) vent, intensité de pluie (mm/h), humectation foliaire ;
-- l'entité météo à utiliser pour les prévisions (ex. MeteoSwiss) ;
-- les modèles de risque à activer et les notifications ;
-- (facultatif) les capteurs MeteoSwiss de secours.
+**At install time — the site:**
+- the temperature and humidity sensors of your station, whatever the
+  brand;
+- (optional) wind, rain rate (mm/h), leaf wetness;
+- the weather entity to use for forecasts;
+- which risk models to enable, and notifications;
+- (optional) the MeteoSwiss fallback sensors.
 
-**Ensuite — vos arbres**, un par un, via le bouton **« Ajouter un
-arbre »** sur la page de l'intégration. Pour chacun :
+**Then — your trees**, one at a time, through the **"Add a tree"** button
+on the integration page. For each one:
 
-| Champ | Rôle |
+| Field | Purpose |
 |---|---|
-| Nom | « Golden du fond », « Cerisier de la terrasse »… |
-| Espèce | détermine les seuils de gel T10/T90 et les maladies suivies |
-| Stade phénologique | position actuelle dans la saison |
-| Avancement automatique | laisse les degrés-jours faire progresser le stade |
-| Décalage de degrés-jours | recale le modèle sur votre verger |
+| Name | "Golden at the back", "Cherry by the terrace"... |
+| Species | determines the T10/T90 frost thresholds and which diseases are tracked |
+| Growth stage | current position in the season |
+| Automatic advancement | lets growing degree days move the stage forward |
+| Growing degree day offset | recalibrates the model for your orchard |
 
-Les capteurs et la météo restent **partagés** : ajouter un dixième
-arbre ne déclenche aucune requête supplémentaire.
+Sensors and weather stay **shared**: adding a tenth tree triggers no
+extra request.
 
-## Plusieurs arbres, chacun son calcul
+## Several trees, each with its own calculation
 
-Chaque arbre devient un **appareil Home Assistant distinct**, nommé
-« Espèce + votre nom » (par exemple *Pommier Golden du fond*). Ses
-entités sont rattachées à cet appareil :
+Each tree becomes a **separate Home Assistant device**, named "Species +
+your name" (for example *Apple Golden at the back*). Its entities are
+attached to that device:
 
-- **Risque de gel** — calculé avec les seuils du stade de *cet* arbre.
-  Un pommier en floraison et un cerisier encore en bourgeon gonflé, la
-  même nuit, ne donnent pas la même alerte.
-- **Stade phénologique** — en capteur (historisable) et en `select`
-  (modifiable).
-- **Avancement automatique** — interrupteur, pour reprendre la main
-  arbre par arbre.
-- **Risques maladie et protection** — uniquement ceux qui concernent
-  l'espèce. Un pommier reçoit l'oïdium, une pomme de terre le mildiou ;
-  appliquer le mildiou de la pomme de terre à un pommier n'aurait aucun
-  sens agronomique.
+- **Frost risk** — computed with the thresholds of *this* tree's stage.
+  An apple tree in bloom and a cherry still at swollen bud, on the same
+  night, do not produce the same alert.
+- **Growth stage** — as a sensor (recordable) and as a `select`
+  (editable).
+- **Automatic advancement** — a switch, to take back control tree by
+  tree.
+- **Disease risks and protection** — only those relevant to the species.
+  An apple tree gets powdery mildew, a potato gets late blight; applying
+  potato late blight to an apple tree would make no agronomic sense.
 
-**Comment distinguer les stades d'un arbre à l'autre ?** Trois niveaux
-de lisibilité, pour que le contexte ne se perde jamais :
+**How do you tell one tree's stage from another's?** The context comes
+from the device: the entity belongs to the tree's device, so Home
+Assistant displays it as *Apple Golden at the back — Growth stage*. The
+`tree`, `crop` and `stage` attributes carry the same context for cards
+and Jinja templates.
 
-1. l'entité appartient à l'appareil de l'arbre (« Pommier Golden ») ;
-2. les options du `select` sont préfixées par l'espèce — *« Pommier —
-   Pleine floraison »*, et non *« Pleine floraison »* ;
-3. les attributs `tree`, `crop_label` et `stage_label` portent le
-   contexte pour les cartes et les modèles Jinja.
+## Automatic stage advancement
 
-## Avancement automatique du stade
+Spring development follows heat accumulation, not the calendar. The
+integration therefore accumulates **growing degree days** (base 5.6 °C,
+from January 1st, daily average method) and compares that total to
+per-species, per-stage thresholds.
 
-Le développement printanier suit l'accumulation de chaleur, pas le
-calendrier. Le plugin cumule donc des **degrés-jours** (base 5,6 °C,
-depuis le 1er janvier, méthode de la moyenne journalière) et compare ce
-cumul à des seuils par espèce et par stade.
+When a threshold is crossed, the stage is **advanced and applied
+automatically**, and you are told about it — notification and event.
+Three safeguards:
 
-Quand un seuil est franchi, le stade est **avancé et appliqué
-automatiquement**, et vous en êtes informé — notification et événement.
-Trois garde-fous :
+- **your correction wins.** Change the stage by hand from the `select`
+  and it becomes the new reference;
+- **advancement is monotonic.** The model never moves a stage backwards:
+  a warm spell does not "undo" an observed bloom;
+- **everything can be switched off.** The *Automatic advancement* switch
+  disables it for a given tree.
 
-- **votre correction fait autorité.** Changez le stade à la main depuis
-  le `select` : il devient la nouvelle référence ;
-- **l'avancement est monotone.** Le modèle ne fait jamais reculer un
-  stade : un redoux ne « défait » pas une floraison constatée ;
-- **tout est débrayable.** L'interrupteur *Avancement automatique*
-  coupe l'automatisme pour un arbre donné.
+The stage sensor also exposes the next expected stage, the degree days
+remaining to reach it, the recorded bloom date, and an estimate of the
+days before harvest.
 
-Le capteur de stade expose aussi le prochain stade attendu, les
-degrés-jours restants pour l'atteindre, la date de floraison relevée et
-une estimation des jours avant récolte.
+⚠️ **These thresholds are regionally calibrated.** The reference values
+come from North American data (base 42 °F, MSU Enviroweather). Under a
+different climate or with a different cultivar, the same stages occur at
+different totals. The **growing degree day offset** field exists
+precisely to recalibrate the model: positive if your orchard is
+consistently ahead of the announcements, negative if it lags behind.
 
-⚠️ **Ces seuils sont calibrés régionalement.** Les valeurs de référence
-proviennent de données nord-américaines (base 42 °F, MSU Enviroweather).
-Sous un autre climat ou avec une autre variété, les mêmes stades
-surviennent à des cumuls différents. Le champ **décalage de
-degrés-jours** sert précisément à recaler le modèle : positif si votre
-verger est régulièrement en avance sur les annonces, négatif s'il est en
-retard.
+## Alerts
 
-## Alertes
+Two complementary mechanisms, both per tree:
 
-Deux mécanismes complémentaires, tous deux par arbre :
+**Built-in notifications** (enabled by default, can be disabled in the
+options) — a Home Assistant notification on every escalation, from the
+"warning" level upwards:
 
-**Notifications intégrées** (activées par défaut, désactivables dans les
-options) — une notification Home Assistant à chaque aggravation, à
-partir du niveau « alerte » :
+> **Apple Golden at the back — Frost risk: Severe**
+> Growth stage: Full bloom
+> minimum expected −4.1 °C in the shade, damage threshold −2.2 °C, around 12/04 03:00
 
-> **Pommier Golden du fond — gel : risque sévère**
-> Stade : Pleine floraison
-> minimum attendu −4,1 °C sous abri, seuil de dégâts −2,2 °C, vers 03h
+**Events**, for your own automations:
 
-**Événements**, pour vos propres automatisations :
-
-| Événement | Émis quand |
+| Event | Fired when |
 |---|---|
-| `meteo_sentinelle_risk_changed` | un niveau de risque change |
-| `meteo_sentinelle_stage_advanced` | un stade est avancé automatiquement |
+| `meteo_sentinelle_risk_changed` | a risk level changes |
+| `meteo_sentinelle_stage_advanced` | a stage is advanced automatically |
 
-Les données de l'événement contiennent l'arbre, l'espèce, le stade, le
-modèle, l'ancien et le nouveau niveau, un booléen `escalated` et un
-`detail` déjà rédigé.
+The event data contains the tree, species, stage, model, previous and new
+level, an `escalated` boolean, and a ready-made `detail` string.
 
-### Blueprints prêts à l'emploi
+### Ready-made blueprints
 
-Deux automatisations toutes faites, à installer en un clic — aucun YAML
-à écrire. Ces blueprints ne sont **pas** livrés par HACS (qui n'installe
-que `custom_components/`) : il faut les importer une fois.
+Two turnkey automations, installable in one click — no YAML to write.
+These blueprints are **not** delivered by HACS (which only installs
+`custom_components/`): they have to be imported once.
 
-**Protection contre le gel** — prévient au franchissement du seuil,
-allume un dispositif de protection (câble chauffant, aspersion, prise
-connectée) et le coupe quand le risque retombe. Le dispositif est
-facultatif : sans lui, c'est une simple alerte gel.
+**Frost protection** — warns you when the threshold is crossed, switches
+on a protection device (heating cable, sprinkler, smart plug) and
+switches it off when the risk clears. The device is optional: without
+it, this is a plain frost alert.
 
-[![Ouvrir dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Fprotection_gel.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Ffrost_protection.yaml)
 
-**Alertes tous risques** — route gel, mildiou, oïdium et changements de
-stade vers le canal de votre choix, avec filtrage par niveau minimal et
-par type de risque.
+**All-risk alerts** — routes frost, late blight, powdery mildew and
+stage changes to the channel of your choice, with filtering by minimum
+level and by risk type.
 
-[![Ouvrir dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Falerte_meteo_sentinelle.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Frisk_alerts.yaml)
 
-Si le bouton ne fonctionne pas, copier l'URL du fichier YAML depuis
-`blueprints/automation/meteo_sentinelle/` et l'importer depuis
-**Paramètres → Automatisations et scènes → Blueprints → Importer**.
+French versions of both blueprints are available in
+`blueprints/automation/meteo_sentinelle/` (`protection_gel.yaml` and
+`alerte_meteo_sentinelle.yaml`) — blueprints cannot be translated by
+Home Assistant, so each language ships as its own file.
 
-Les deux blueprints ne se déclenchent qu'au **franchissement** du seuil
-choisi : rester en alerte ne renotifie pas, et repasser en dessous
-déclenche la remise à l'état normal.
+If the button does not work, copy the URL of the YAML file and import it
+from **Settings → Automations & scenes → Blueprints → Import blueprint**.
 
-Deux principes de conception : on n'alerte **qu'aux changements** — un
-rappel toutes les 15 minutes apprendrait vite à ignorer le plugin — et
-**seulement à l'aggravation**, une amélioration n'ayant pas à réveiller
-qui que ce soit.
+Both blueprints only fire when the chosen threshold is **crossed**:
+staying in alert does not notify again, and dropping back below it
+triggers the return to normal.
 
-Ces réglages sont modifiables à tout moment via **Options** sur
-l'intégration ; les arbres se modifient depuis leur propre entrée.
+Two design principles: alerts fire **only on changes** — a reminder every
+15 minutes would quickly teach you to ignore the integration — and
+**only on escalation**, since an improvement has no business waking
+anyone up.
 
-## Modèles de risque
+These settings can be changed at any time through **Options** on the
+integration; trees are edited from their own entry.
 
-Tous les modèles travaillent sur des **séries horaires** reconstruites
-depuis l'historique de Home Assistant, comme l'exigent les critères
-publiés (« 6 heures continues », « 11 heures à HR ≥ 90 % »).
+## Risk models
 
-### Gel — seuils phénologiques
+All models work on **hourly series** rebuilt from Home Assistant
+history, as the published criteria require ("6 continuous hours",
+"11 hours at RH ≥ 90%").
 
-Il n'existe pas *un* seuil de gel. Un pommier supporte −18 °C en
-dormance et souffre dès −2,2 °C en pleine floraison. L'intégration
-utilise les tables **T10 / T90** de Washington State University
-(températures provoquant 10 % et 90 % de mortalité des bourgeons après
-30 min d'exposition), pour pommier, poirier, abricotier, prunier,
-pêcher/nectarinier et cerisier doux.
+### Frost — phenological thresholds
 
-Vous choisissez la culture à la configuration ; le **stade
-phénologique** se change ensuite à tout moment depuis l'entité
-`select.…_stade_phenologique` — utile pour l'automatiser ou l'ajuster
-en observant le verger.
+There is no single frost threshold. An apple tree withstands −18 °C in
+dormancy and suffers from −2.2 °C at full bloom. The integration uses the
+**T10 / T90** tables from Washington State University (temperatures
+causing 10% and 90% bud mortality after 30 minutes of exposure) for
+apple, pear, apricot, plum, peach/nectarine and sweet cherry.
 
-L'intégration estime aussi la **température de surface** : sous ciel
-dégagé et vent faible, le rayonnement nocturne refroidit le sol de 3 à
-5 °C sous la température de l'air. Une gelée blanche survient donc
-couramment alors que l'abri affiche encore +2 °C. Les cultures basses
-(tomate, pomme de terre, légumes) sont évaluées sur cette température
-de surface, les arbres sur celle de l'air.
+You choose the species during setup; the **growth stage** can then be
+changed at any time from the `select` entity — useful to automate it or
+adjust it by observing the orchard.
 
-### Mildiou — critères de Hutton *et* Smith Period
+The integration also estimates **surface temperature**: under a clear sky
+and light wind, night-time radiation cools the ground 3 to 5 °C below air
+temperature. Ground frost therefore commonly occurs while the shelter
+still reads +2 °C. Low crops (tomato, potato, vegetables) are evaluated
+on this surface temperature, trees on air temperature.
 
-Deux critères sont calculés en parallèle :
+### Late blight — Hutton criteria *and* Smith Period
 
-| Critère | Condition | Origine |
+Two criteria are computed in parallel:
+
+| Criterion | Condition | Origin |
 |---|---|---|
-| **Hutton** | 2 jours consécutifs, T min ≥ 10 °C, **≥ 6 h** continues à HR ≥ 90 % | James Hutton Institute / AHDB, 2017 |
-| **Smith** | 2 jours consécutifs, T min ≥ 10 °C, **≥ 11 h** continues à HR ≥ 90 % | Smith, 1956 |
+| **Hutton** | 2 consecutive days, T min ≥ 10 °C, **≥ 6 h** continuous at RH ≥ 90% | James Hutton Institute / AHDB, 2017 |
+| **Smith** | 2 consecutive days, T min ≥ 10 °C, **≥ 11 h** continuous at RH ≥ 90% | Smith, 1956 |
 
-Le niveau de risque suit **Hutton**, plus sensible. Les essais en
-enceinte climatique ayant conduit à ces critères ont montré que les
-isolats contemporains de *Phytophthora infestans* infectent dans des
-conditions nettement moins humides que ne le prévoyait Smith : cette
-dernière sous-détecte les génotypes agressifs modernes. Elle reste
-exposée en attribut, pour comparaison.
+The risk level follows **Hutton**, the more sensitive of the two. The
+controlled-environment trials behind these criteria showed that
+contemporary isolates of *Phytophthora infestans* infect under
+noticeably less humid conditions than Smith predicted: Smith
+under-detects modern aggressive genotypes. It remains exposed as an
+attribute, for comparison.
 
-Un capteur d'humectation foliaire, si vous en avez un, remplace le
-proxy HR ≥ 90 %.
+A leaf wetness sensor, if you have one, replaces the RH ≥ 90% proxy.
 
-### Oïdium — indice Gubler-Thomas
+### Powdery mildew — Gubler-Thomas index
 
-Indice cumulatif 0-100 développé à UC Davis, qui pilote l'espacement
-des traitements. L'épidémie démarre après 3 journées consécutives
-comptant ≥ 6 h continues entre 21,1 et 29,4 °C ; ensuite l'indice gagne
-20 points par journée favorable, en perd 10 par journée défavorable ou
-par pic à ≥ 35 °C (léthal pour les conidies).
+A cumulative 0-100 index developed at UC Davis, which drives treatment
+spacing. The epidemic starts after 3 consecutive days with ≥ 6
+continuous hours between 21.1 and 29.4 °C; the index then gains 20 points
+per favourable day and loses 10 per unfavourable day or per peak at
+≥ 35 °C (lethal to conidia).
 
-Bandes publiées : 0-30 faible, 40-60 modéré, > 60 élevé — avec un
-intervalle de traitement conseillé exposé en attribut.
+Published bands: 0-30 low, 40-60 moderate, > 60 high — with a
+recommended spray interval exposed as an attribute.
 
-**Correction ajoutée par ce plugin :** contrairement au mildiou,
-l'oïdium est *inhibé* par l'eau libre — la pluie lessive les conidies.
-Le Gubler-Thomas d'origine ne modélise pas la pluie ; on applique donc
-une pénalité de −10 points au-delà de 2,5 mm journaliers, en reprenant
-la règle du modèle « Hop Powdery Mildew » (variante Cascade), lui-même
-dérivé de Gubler-Thomas. Désactivable dans les options.
+**A correction added by this integration:** unlike late blight, powdery
+mildew is *inhibited* by free water — rain washes conidia away. The
+original Gubler-Thomas does not model rain, so a −10 point penalty is
+applied beyond 2.5 mm daily, borrowing the rule from the "Hop Powdery
+Mildew" model (Cascade variant), itself derived from Gubler-Thomas. This
+can be disabled in the options.
 
-### Suivi des traitements — « protégé jusqu'à »
+### Treatment tracking — "protected until"
 
-Un modèle dit « le risque est élevé ». Un outil de décision dit
-« traitez avant jeudi ». Le service `meteo_sentinelle.log_treatment`
-enregistre une application :
+A model says "risk is high". A decision tool says "spray before
+Thursday". The `meteo_sentinelle.log_treatment` action records an
+application:
 
 ```yaml
 action: meteo_sentinelle.log_treatment
 data:
   target: powdery_mildew
-  tree: Pommier Golden du fond   # omis = tous les arbres concernés
-  product: Soufre mouillable
+  tree: Apple Golden at the back   # omitted = every relevant tree
+  product: Wettable sulphur
   residual_days: 10
   rainfast_mm: 20
 ```
 
-L'intégration en déduit une entité **Protection mildiou / oïdium**
-donnant la date de fin de protection, en tenant compte de la rémanence
-**et du lessivage** : au-delà du cumul de pluie déclaré, la protection
-est considérée comme perdue même si la rémanence n'est pas écoulée.
-Tant qu'une protection est active, le niveau de risque affiché est
-rétrogradé d'un cran.
+The integration derives a **Late blight / powdery mildew protection**
+entity giving the end-of-protection date, accounting for both residual
+activity **and wash-off**: past the declared rain total, protection is
+considered lost even if the residual period has not elapsed. While a
+protection is active, the displayed risk level is downgraded by one step.
 
-Le suivi est **par arbre** : vous pouvez traiter le pommier aujourd'hui
-et le poirier la semaine prochaine sans que les deux se confondent.
+Tracking is **per tree**: you can treat the apple today and the pear next
+week without the two getting mixed up.
 
-Aucune base de produits n'est embarquée : renseignez rémanence et
-résistance au lavage d'après l'étiquette de ce que vous appliquez.
+No product database is bundled: enter residual activity and rainfastness
+from the label of whatever you apply.
 
-### Limites assumées
+### Acknowledged limitations
 
-Ces modèles reproduisent fidèlement des critères publiés, mais restent
-en deçà d'un outil professionnel sur trois points :
+These models faithfully reproduce published criteria, but fall short of a
+professional tool on three points:
 
-- **l'inoculum n'est pas modélisé** — trois jours humides en avril sans
-  foyer à proximité sont inoffensifs ; les mêmes après une déclaration
-  chez le voisin sont critiques. Sans réseau de surveillance régional,
-  ces modèles supposent le pathogène présent et alertent donc parfois
-  pour rien ;
-- **pas de suivi de cohortes d'infection** (latence, sortie des
-  lésions) ;
-- **aucune validation au champ** — les modèles experts sont calibrés
-  sur des essais multi-années et multi-régions.
+- **inoculum is not modelled** — three wet days in April with no nearby
+  outbreak are harmless; the same three after a neighbour reports one are
+  critical. Without a regional monitoring network, these models assume
+  the pathogen is present and therefore sometimes alert for nothing;
+- **no tracking of infection cohorts** (latency, lesion emergence);
+- **no field validation** — expert models are calibrated on multi-year,
+  multi-region trials.
 
-À utiliser comme aide à la vigilance, pas comme avis phytosanitaire.
+Use this as an aid to vigilance, not as plant-health advice.
 
-### Sources
+## Sources
 
-- Critères de Hutton — [AHDB / James Hutton Institute](https://potatoes.ahdb.org.uk/development-and-implementation-of-a-new-national-warning-system-for-potato-late-blight-in-great-britain-hutton-criteria)
-- Indice Gubler-Thomas — [UC IPM, Gubler *et al.* 1999](https://uspest.org/npdn/riskdoc.html)
-- Températures critiques T10/T90 — [WSU, publié par USU Extension IPM-012-11](https://extension.usu.edu/productionhort/files/CriticalTemperaturesFrostDamageFruitTrees.pdf)
-- Degrés-jours et phénologie du pommier — [MSU Enviroweather](https://enviroweather.msu.edu/weathermodels/growingdegreedays)
+- Hutton criteria — [AHDB / James Hutton Institute](https://potatoes.ahdb.org.uk/development-and-implementation-of-a-new-national-warning-system-for-potato-late-blight-in-great-britain-hutton-criteria)
+- Gubler-Thomas index — [UC IPM, Gubler *et al.* 1999](https://uspest.org/npdn/riskdoc.html)
+- Critical T10/T90 temperatures — [WSU, published by USU Extension IPM-012-11](https://extension.usu.edu/productionhort/files/CriticalTemperaturesFrostDamageFruitTrees.pdf)
+- Growing degree days and apple phenology — [MSU Enviroweather](https://enviroweather.msu.edu/weathermodels/growingdegreedays)
 
-## Feuille de route
+## Roadmap
 
-- v0.4 : plusieurs arbres surveillés, chacun avec son stade et ses
-  calculs ; avancement automatique par degrés-jours ; alertes par
-  événements, notifications et blueprint.
-- **v0.5 (actuelle)** : renommage en Météo Sentinelle, positionnement
-  ouvert à toute station météo, domaine `meteo_sentinelle`.
-- v0.6 : tavelure du pommier (table de Mills), cohortes d'infection
-  avec latence pour le mildiou.
-- v0.7 : sensibilité variétale, agrégation de plusieurs sources météo.
-- v0.8 : ajustement du décalage de degrés-jours par apprentissage sur
-  les corrections manuelles de l'utilisateur.
+- v0.4: several monitored trees, each with its own stage and
+  calculations; automatic advancement by growing degree days; alerts
+  through events, notifications and a blueprint.
+- v0.5: renamed to Météo Sentinelle, opened up to any weather station,
+  `meteo_sentinelle` domain.
+- v0.6: fully translated interface (English and French).
+- v0.7: ready-made frost protection blueprint.
+- **v0.8 (current)**: English-first documentation, bilingual blueprints,
+  translated notifications.
+- Next: apple scab (Mills table), infection cohorts with latency for
+  late blight, cultivar sensitivity, learning the degree day offset from
+  the user's manual corrections.
 
-Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le détail des choix de
-conception.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the design rationale (in
+French).
 
-## Langue de l'interface
+## Interface language
 
-L'intégration s'affiche dans la langue de Home Assistant : espèces,
-stades phénologiques, niveaux de risque et noms de capteurs existent en
-français et en anglais, et basculent automatiquement selon la langue de
-l'utilisateur.
+The integration displays in Home Assistant's language: species, growth
+stages, risk levels, sensor names and notifications exist in English and
+French, and switch automatically according to the user's language.
+English is the fallback for every other language.
 
-Conséquence à connaître pour les automatisations : les entités exposent
-une **clé technique** comme état (`full_bloom`), pas le texte affiché
-(« Pleine floraison »). C'est Home Assistant qui traduit à l'affichage.
-Une condition doit donc comparer la clé :
+One consequence to know about for automations: entities expose a
+**technical key** as their state (`full_bloom`), not the displayed text
+("Full bloom"). Home Assistant translates it for display. A condition
+must therefore compare the key:
 
 ```yaml
 condition:
   - condition: state
-    entity_id: sensor.pommier_stade_phenologique
-    state: "full_bloom"   # et non « Pleine floraison »
+    entity_id: sensor.apple_golden_growth_stage
+    state: "full_bloom"   # not "Full bloom"
 ```
 
-Les notifications restent en français : Home Assistant n'offre pas de
-mécanisme de traduction pour le texte libre. Le blueprint fourni et les
-événements permettent de composer vos propres messages.
+Blueprints are the one exception: Home Assistant offers no translation
+mechanism for them, so English and French versions ship as separate
+files.
 
-## Icône dans HACS et Home Assistant
+## Icon in HACS and Home Assistant
 
-Depuis Home Assistant 2026.3, une intégration personnalisée peut fournir
-sa propre icône **directement dans son dossier**, sans passer par le
-dépôt central `home-assistant/brands` (qui n'accepte d'ailleurs plus les
-soumissions d'intégrations personnalisées). C'est la méthode que ce
-projet utilise :
+Since Home Assistant 2026.3, a custom integration can provide its own
+icon **directly inside its folder**, without going through the central
+`home-assistant/brands` repository (which no longer accepts custom
+integration submissions anyway). That is the method this project uses:
 
 ```
 custom_components/meteo_sentinelle/brand/
 ├── icon.png      (256×256)
 ├── icon@2x.png   (512×512)
-└── icon.svg      (source, non utilisée par Home Assistant)
+└── icon.svg      (source, not used by Home Assistant)
 ```
 
-Nécessite Home Assistant 2026.3 ou supérieur ; sur une version plus
-ancienne, l'icône ne s'affiche nulle part (repli silencieux sur le
-générique), sans que cela n'affecte le fonctionnement de l'intégration.
+Requires Home Assistant 2026.3 or newer; on an older version the icon
+shows nowhere (silent fallback to the generic one), without affecting
+how the integration works.
 
-## Soutenir le projet
+## Supporting the project
 
-Si cette intégration vous fait gagner du temps (ou sauve vos plants de
-tomates !), vous pouvez m'offrir un café :
+If this integration saves you time (or saves your tomato plants!), you
+can buy me a coffee:
 
 👉 [Buy Me a Coffee](https://buymeacoffee.com/sdavid66)
 
 ## Licence
 
-GPL-3.0 — voir [LICENSE](LICENSE). Le code reste libre : vous pouvez l'utiliser, le modifier et le redistribuer, à condition que toute version dérivée reste elle aussi open source sous la même licence.
+GPL-3.0 — see [LICENSE](LICENSE). The code stays free: you may use,
+modify and redistribute it, provided any derivative version also remains
+open source under the same licence.

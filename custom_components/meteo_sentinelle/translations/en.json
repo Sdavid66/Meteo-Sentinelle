@@ -341,5 +341,24 @@
         "powdery_mildew": "Powdery mildew (Gubler-Thomas index)"
       }
     }
+  },
+  "common": {
+    "notify_risk_title": "{tree} — {model}: {level}",
+    "notify_stage_line": "Growth stage: {stage}",
+    "notify_frost_caveat": "Check the forecast before setting up protection.",
+    "notify_disease_caveat": "These models are indicative and assume the pathogen is present; they do not replace on-site observation.",
+    "notify_stage_title": "{tree} — growth stage advanced automatically",
+    "notify_stage_change": "The growth stage moved from {previous} to {stage}, based on accumulated growing degree days ({gdd} °C·d).",
+    "notify_stage_advice": "This change was applied automatically and alters the frost thresholds used for this tree. If it does not match what you observe, correct it from the growth stage entity: your correction takes precedence. You can also turn off automatic advancement for this tree.",
+    "stage_not_set": "not set",
+    "detail_frost_min_air": "minimum expected {temperature} °C in the shade",
+    "detail_frost_min_ground": "minimum expected {temperature} °C at ground level",
+    "detail_frost_threshold": "damage threshold {temperature} °C",
+    "detail_frost_time": "around {time}",
+    "detail_blight_hutton": "Hutton criteria met",
+    "detail_blight_one_day": "one favourable day",
+    "detail_blight_wet_hours": "{hours} h of continuous humidity yesterday",
+    "detail_mildew_index": "index {index}/100",
+    "detail_mildew_interval": "recommended spray interval {days} days"
   }
 }

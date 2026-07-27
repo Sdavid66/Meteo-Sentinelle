@@ -1,0 +1,205 @@
+blueprint:
+  name: Météo Sentinelle — frost protection
+  description: >-
+    Ready to use: warns you as soon as a monitored tree crosses into frost
+    risk, and can switch on a protection device (heating cable, motorised
+    cover, sprinkler, smart plug), then switch it off once the risk clears.
+
+
+    The message names the tree, its growth stage, the minimum temperature
+    expected and the threshold at which damage begins — that comparison is
+    what makes the alert useful, since −2 °C does not mean the same thing
+    during dormancy and at full bloom.
+
+
+    You need at least one tree configured in Météo Sentinelle. Every field
+    except the first is optional: fill in only the notification and this
+    behaves as a plain frost alert.
+  domain: automation
+  author: Sdavid66
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    notification:
+      name: Notification
+      icon: mdi:bell-alert
+      collapsed: false
+      input:
+        notify_service:
+          name: Notification action
+          description: >-
+            For example `notify.mobile_app_my_phone`, or
+            `notify.persistent_notification` to stay inside Home Assistant.
+            Leave empty to skip notifying and only drive a device.
+          default: notify.persistent_notification
+          selector:
+            text:
+
+    triggering:
+      name: Triggering
+      icon: mdi:thermometer-alert
+      collapsed: false
+      input:
+        minimum_level:
+          name: Minimum level
+          description: >-
+            "Watch" warns early, at the cost of false alarms. "Warning" is
+            the point where the first damage becomes likely: it is the
+            recommended setting.
+          default: warning
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Watch — plenty of lead time
+                  value: watch
+                - label: Warning — first damage likely (recommended)
+                  value: warning
+                - label: Severe — significant damage expected
+                  value: severe
+        trees:
+          name: Restrict to specific trees
+          description: >-
+            Names of the trees to watch, one per line, exactly as they
+            appear in Météo Sentinelle. Leave empty for all trees.
+          default: []
+          selector:
+            text:
+              multiple: true
+
+    protection:
+      name: Protection device (optional)
+      icon: mdi:shield-sun
+      collapsed: true
+      input:
+        protection_entities:
+          name: Switch on when frost threatens
+          description: >-
+            The plug, switch or valve driving your protection.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - switch
+                    - light
+                    - input_boolean
+                    - valve
+        turn_off_when_clear:
+          name: Switch off once the risk clears
+          description: >-
+            Turns the device off as soon as the risk falls back below the
+            chosen level. Disable this if you would rather switch it off
+            yourself, after checking that the thaw really happened.
+          default: true
+          selector:
+            boolean:
+
+mode: queued
+max: 25
+
+triggers:
+  - trigger: event
+    event_type: meteo_sentinelle_risk_changed
+    event_data:
+      model: frost
+    id: frost
+
+variables:
+  minimum_level: !input minimum_level
+  trees: !input trees
+  protection_entities: !input protection_entities
+  turn_off_when_clear: !input turn_off_when_clear
+  notify_service: !input notify_service
+  # Levels are technical keys: ranking them lets us compare "at least this
+  # level" without depending on the displayed language.
+  ranks:
+    none: 0
+    watch: 1
+    warning: 2
+    severe: 3
+  wanted: "{{ ranks.get(minimum_level, 2) }}"
+  current: "{{ ranks.get(trigger.event.data.level, 0) }}"
+  previous: "{{ ranks.get(trigger.event.data.previous_level, 0) }}"
+  # An empty list means "every tree".
+  tree_matches: >-
+    {{ trees | count == 0 or trigger.event.data.tree in trees }}
+
+conditions:
+  - condition: template
+    value_template: "{{ tree_matches }}"
+  # Act only when the threshold is crossed, in either direction: without
+  # this, every variation above the threshold would notify again.
+  - condition: template
+    value_template: >-
+      {{ (current >= wanted and previous < wanted)
+         or (current < wanted and previous >= wanted) }}
+
+actions:
+  - choose:
+      # ---------------------------------------------------------------
+      # Risk crosses the threshold: alert and protect.
+      # ---------------------------------------------------------------
+      - conditions:
+          - condition: template
+            value_template: "{{ current >= wanted }}"
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ protection_entities | count > 0 }}"
+            then:
+              - action: homeassistant.turn_on
+                target:
+                  entity_id: "{{ protection_entities }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ notify_service | trim != '' }}"
+            then:
+              - action: "{{ notify_service }}"
+                data:
+                  title: >-
+                    Frost — {{ trigger.event.data.tree }}
+                  message: >-
+                    {% set d = trigger.event.data %}
+                    {%- set mini = d.reference_min -%}
+                    {%- set limit = d.t10 -%}
+                    {{ d.level_label | default(d.level) }} risk.
+                    {% if d.stage_label %}Growth stage: {{ d.stage_label }}.{% endif %}
+                    {% if mini is not none %}
+                    Minimum expected {{ mini | round(1) }} °C{% if limit is not none %},
+                    first damage from {{ limit | round(1) }} °C{% endif %}.
+                    {% endif %}
+                    {%- if d.detail %} {{ d.detail }}.{% endif %}
+                    {% if protection_entities | count > 0 %}
+                    Protection switched on.
+                    {% endif %}
+
+      # ---------------------------------------------------------------
+      # Risk falls back below the threshold: switch off and inform.
+      # ---------------------------------------------------------------
+      - conditions:
+          - condition: template
+            value_template: "{{ current < wanted }}"
+        sequence:
+          - if:
+              - condition: template
+                value_template: >-
+                  {{ turn_off_when_clear and protection_entities | count > 0 }}
+            then:
+              - action: homeassistant.turn_off
+                target:
+                  entity_id: "{{ protection_entities }}"
+
+              - if:
+                  - condition: template
+                    value_template: "{{ notify_service | trim != '' }}"
+                then:
+                  - action: "{{ notify_service }}"
+                    data:
+                      title: >-
+                        Frost cleared — {{ trigger.event.data.tree }}
+                      message: >-
+                        Frost risk has fallen back below the level you are
+                        watching. Protection switched off.

@@ -341,5 +341,24 @@
         "powdery_mildew": "Oïdium (indice Gubler-Thomas)"
       }
     }
+  },
+  "common": {
+    "notify_risk_title": "{tree} — {model} : {level}",
+    "notify_stage_line": "Stade phénologique : {stage}",
+    "notify_frost_caveat": "Vérifiez la prévision avant d'engager une protection.",
+    "notify_disease_caveat": "Ces modèles sont indicatifs et supposent le pathogène présent ; ils ne remplacent pas une observation sur place.",
+    "notify_stage_title": "{tree} — stade avancé automatiquement",
+    "notify_stage_change": "Le stade est passé de {previous} à {stage}, d'après le cumul de degrés-jours ({gdd} °C·j).",
+    "notify_stage_advice": "Ce changement a été appliqué automatiquement et modifie les seuils de gel utilisés pour cet arbre. Si l'observation sur place ne correspond pas, corrigez le stade depuis l'entité de stade phénologique : votre correction fait autorité. Vous pouvez aussi désactiver l'avancement automatique pour cet arbre.",
+    "stage_not_set": "non renseigné",
+    "detail_frost_min_air": "minimum attendu {temperature} °C sous abri",
+    "detail_frost_min_ground": "minimum attendu {temperature} °C au niveau du sol",
+    "detail_frost_threshold": "seuil de dégâts {temperature} °C",
+    "detail_frost_time": "vers {time}",
+    "detail_blight_hutton": "critères de Hutton remplis",
+    "detail_blight_one_day": "une journée favorable",
+    "detail_blight_wet_hours": "{hours} h d'humidité continue hier",
+    "detail_mildew_index": "indice {index}/100",
+    "detail_mildew_interval": "intervalle conseillé {days} jours"
   }
 }

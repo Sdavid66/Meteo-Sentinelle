@@ -1,0 +1,120 @@
+blueprint:
+  name: Météo Sentinelle — risk alerts
+  description: >-
+    Sends a notification when a monitored tree moves to a higher risk level
+    (frost, late blight, powdery mildew), or when its growth stage is
+    advanced automatically.
+
+
+    The message includes the tree concerned, its growth stage, and the
+    useful detail: minimum temperature expected and damage threshold for
+    frost, index or criterion met for diseases.
+  domain: automation
+  author: Sdavid66
+  input:
+    notify_service:
+      name: Notification action
+      description: >-
+        For example notify.mobile_app_my_phone,
+        notify.persistent_notification, or a Telegram action.
+      selector:
+        text:
+    minimum_level:
+      name: Minimum level
+      description: Level from which to notify.
+      default: warning
+      selector:
+        select:
+          options:
+            - label: Watch
+              value: watch
+            - label: Warning
+              value: warning
+            - label: Severe
+              value: severe
+    models:
+      name: Risks to watch
+      default:
+        - frost
+        - late_blight
+        - powdery_mildew
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Frost
+              value: frost
+            - label: Late blight
+              value: late_blight
+            - label: Powdery mildew
+              value: powdery_mildew
+    notify_stage_changes:
+      name: Notify automatic growth stage changes
+      default: true
+      selector:
+        boolean:
+
+mode: queued
+max: 25
+
+triggers:
+  - trigger: event
+    event_type: meteo_sentinelle_risk_changed
+    id: risk
+  - trigger: event
+    event_type: meteo_sentinelle_stage_advanced
+    id: stage
+
+variables:
+  minimum_level: !input minimum_level
+  models: !input models
+  notify_stage_changes: !input notify_stage_changes
+  ranks:
+    none: 0
+    watch: 1
+    warning: 2
+    severe: 3
+
+conditions:
+  - condition: or
+    conditions:
+      # Risk alert: only an escalation, of the right kind, at least at the
+      # requested level.
+      - condition: and
+        conditions:
+          - "{{ trigger.id == 'risk' }}"
+          - "{{ trigger.event.data.model in models }}"
+          - "{{ trigger.event.data.escalated }}"
+          - >-
+            {{ ranks.get(trigger.event.data.level, 0)
+               >= ranks.get(minimum_level, 2) }}
+      # Automatic growth stage change.
+      - condition: and
+        conditions:
+          - "{{ trigger.id == 'stage' }}"
+          - "{{ notify_stage_changes }}"
+
+actions:
+  - choose:
+      - conditions:
+          - "{{ trigger.id == 'risk' }}"
+        sequence:
+          - action: !input notify_service
+            data:
+              title: >-
+                {{ trigger.event.data.tree }} — {{ trigger.event.data.model_label }}:
+                {{ trigger.event.data.level_label }}
+              message: >-
+                {% set d = trigger.event.data %}
+                Growth stage: {{ d.stage_label or 'not set' }}.
+                {{ (d.detail ~ '.') if d.detail else '' }}
+      - conditions:
+          - "{{ trigger.id == 'stage' }}"
+        sequence:
+          - action: !input notify_service
+            data:
+              title: "{{ trigger.event.data.tree }} — growth stage advanced automatically"
+              message: >-
+                {% set d = trigger.event.data %}
+                New growth stage: {{ d.stage }} ({{ d.gdd }} °C·d accumulated).
+                Correct it by hand if it does not match what you observe.

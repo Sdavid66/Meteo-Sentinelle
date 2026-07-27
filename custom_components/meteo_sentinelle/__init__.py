@@ -29,6 +29,7 @@ from .const import (
     TREATABLE_MODELS,
 )
 from .coordinator import MeteoSentinelleCoordinator
+from .localize import async_preload
 from .models.treatments import DEFAULT_RAINFAST_MM, DEFAULT_RESIDUAL_DAYS
 from .tree import legacy_tree_data, strip_legacy_keys
 
@@ -129,6 +130,10 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    # Les notifications se composent dans un callback synchrone : les
+    # traductions doivent déjà être en cache à ce moment-là.
+    await async_preload(hass)
+
     coordinator = MeteoSentinelleCoordinator(hass, entry)
     await coordinator.async_load_state()
     await coordinator.async_config_entry_first_refresh()
