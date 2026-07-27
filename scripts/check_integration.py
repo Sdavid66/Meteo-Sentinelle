@@ -376,6 +376,42 @@ def check_module_functions(integration: Path) -> None:
         ok("__init__.py : async_setup_entry et async_unload_entry présents")
 
 
+def check_hardcoded_labels(integration: Path) -> None:
+    """Un libellé écrit en Python ne passera jamais par les traductions.
+
+    Les deux formes fautives ne produisent aucun avertissement à
+    l'exécution : elles rendent simplement l'intégration monolingue, ce
+    qui ne se voit qu'en changeant la langue de Home Assistant.
+    """
+    flow = integration / "config_flow.py"
+    if flow.exists():
+        source = flow.read_text(encoding="utf-8")
+        if re.search(r"SelectOptionDict\([^)]*label\s*=", source, re.S):
+            warn(
+                "config_flow.py : un SelectSelector fixe ses libellés avec "
+                "« label= ». Exposer les clés seules et passer "
+                "« translation_key= », sinon la liste reste dans une seule "
+                "langue."
+            )
+        elif "SelectSelector" in source:
+            ok("config_flow.py : les sélecteurs délèguent leurs libellés")
+
+    hardcoded: list[str] = []
+    for path in sorted(integration.glob("*.py")):
+        for match in re.finditer(r"_attr_name\s*=\s*[\"']([^\"']+)[\"']", path.read_text(encoding="utf-8")):
+            hardcoded.append(f"{path.name}: « {match.group(1)} »")
+
+    if hardcoded:
+        warn(
+            "Nom(s) d'entité codé(s) en dur, donc non traduisible(s) — "
+            + "; ".join(hardcoded[:5])
+            + (" …" if len(hardcoded) > 5 else "")
+            + ". Utiliser _attr_translation_key avec entity.<domaine>.<clé>.name."
+        )
+    else:
+        ok("Aucun nom d'entité codé en dur")
+
+
 def check_deprecated_patterns(integration: Path) -> None:
     flow = integration / "config_flow.py"
     if not flow.exists():
@@ -716,6 +752,7 @@ def main() -> int:
         check_module_functions(integration)
         check_migration(integration)
         check_deprecated_patterns(integration)
+        check_hardcoded_labels(integration)
         check_translations(integration)
         check_services(integration)
         check_brand(integration)
