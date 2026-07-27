@@ -22,7 +22,7 @@ from .const import (
 )
 from .entity import MeteoSentinelleSiteEntity, MeteoSentinelleTreeEntity
 from .models import phenology
-from .models.crops import STAGE_LABELS
+from .models.crops import STAGE_LABELS, all_stage_keys
 from .tree import Tree
 
 RISK_ICONS = {
@@ -31,15 +31,17 @@ RISK_ICONS = {
     MODEL_POWDERY_MILDEW: "mdi:leaf-circle-outline",
 }
 
-RISK_NAMES = {
-    MODEL_FROST: "Risque de gel",
-    MODEL_LATE_BLIGHT: "Risque de mildiou",
-    MODEL_POWDERY_MILDEW: "Risque d'oïdium",
+#: Clés de traduction, pas des libellés : Home Assistant résout chacune
+#: dans « entity.sensor.<clé> » de strings.json selon la langue choisie.
+RISK_TRANSLATION_KEYS = {
+    MODEL_FROST: "frost_risk",
+    MODEL_LATE_BLIGHT: "late_blight_risk",
+    MODEL_POWDERY_MILDEW: "powdery_mildew_risk",
 }
 
-PROTECTION_NAMES = {
-    MODEL_LATE_BLIGHT: "Protection mildiou",
-    MODEL_POWDERY_MILDEW: "Protection oïdium",
+PROTECTION_TRANSLATION_KEYS = {
+    MODEL_LATE_BLIGHT: "late_blight_protection",
+    MODEL_POWDERY_MILDEW: "powdery_mildew_protection",
 }
 
 
@@ -82,7 +84,7 @@ class RiskSensor(MeteoSentinelleTreeEntity, SensorEntity):
         super().__init__(coordinator, entry, tree)
         self._model_key = model_key
         self._attr_unique_id = f"{entry.entry_id}_{tree.subentry_id}_{model_key}"
-        self._attr_name = RISK_NAMES.get(model_key, model_key)
+        self._attr_translation_key = RISK_TRANSLATION_KEYS.get(model_key, model_key)
         self._attr_icon = RISK_ICONS.get(model_key, "mdi:sprout")
 
     @property
@@ -120,16 +122,23 @@ class StageSensor(MeteoSentinelleTreeEntity, SensorEntity):
     """
 
     _attr_icon = "mdi:flower-outline"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_translation_key = "phenology_stage"
 
     def __init__(self, coordinator, entry: ConfigEntry, tree: Tree) -> None:
         super().__init__(coordinator, entry, tree)
         self._attr_unique_id = f"{entry.entry_id}_{tree.subentry_id}_stage_sensor"
-        self._attr_name = "Stade phénologique"
+        # Un capteur d'énumération doit annoncer toutes les valeurs qu'il
+        # peut prendre ; l'espèce d'un arbre est modifiable après coup, donc
+        # on déclare l'ensemble des stades connus plutôt que ceux de
+        # l'espèce du moment.
+        self._attr_options = all_stage_keys()
 
     @property
     def native_value(self) -> str | None:
+        """Clé du stade : Home Assistant l'affiche traduite."""
         tree = self.tree
-        return tree.stage_label if tree else None
+        return tree.stage if tree else None
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -181,7 +190,7 @@ class MildewIndexSensor(MeteoSentinelleTreeEntity, SensorEntity):
     def __init__(self, coordinator, entry: ConfigEntry, tree: Tree) -> None:
         super().__init__(coordinator, entry, tree)
         self._attr_unique_id = f"{entry.entry_id}_{tree.subentry_id}_mildew_index"
-        self._attr_name = "Indice oïdium (Gubler-Thomas)"
+        self._attr_translation_key = "powdery_mildew_index"
 
     @property
     def native_value(self) -> int | None:
@@ -213,7 +222,9 @@ class ProtectionSensor(MeteoSentinelleTreeEntity, SensorEntity):
         super().__init__(coordinator, entry, tree)
         self._target = target
         self._attr_unique_id = f"{entry.entry_id}_{tree.subentry_id}_protection_{target}"
-        self._attr_name = PROTECTION_NAMES.get(target, f"Protection {target}")
+        self._attr_translation_key = PROTECTION_TRANSLATION_KEYS.get(
+            target, f"{target}_protection"
+        )
 
     @property
     def native_value(self):
@@ -236,7 +247,7 @@ class GddSensor(MeteoSentinelleSiteEntity, SensorEntity):
     def __init__(self, coordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_gdd"
-        self._attr_name = "Degrés-jours cumulés"
+        self._attr_translation_key = "growing_degree_days"
 
     @property
     def native_value(self) -> float:
@@ -264,7 +275,7 @@ class DataSourceSensor(MeteoSentinelleSiteEntity, SensorEntity):
     def __init__(self, coordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_data_source"
-        self._attr_name = "Source des données"
+        self._attr_translation_key = "data_source"
 
     @property
     def native_value(self) -> str:

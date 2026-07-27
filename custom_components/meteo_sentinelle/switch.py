@@ -45,7 +45,7 @@ class AutoAdvanceSwitch(MeteoSentinelleTreeEntity, SwitchEntity):
     def __init__(self, coordinator, entry: ConfigEntry, tree: Tree) -> None:
         super().__init__(coordinator, entry, tree)
         self._attr_unique_id = f"{entry.entry_id}_{tree.subentry_id}_auto_advance"
-        self._attr_name = "Avancement automatique du stade"
+        self._attr_translation_key = "auto_advance"
 
     @property
     def is_on(self) -> bool:

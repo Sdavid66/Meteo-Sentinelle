@@ -40,19 +40,9 @@ from .const import (
     DEFAULT_NAME,
     DEFAULT_NOTIFICATIONS,
     DOMAIN,
-    MODEL_FROST,
-    MODEL_LATE_BLIGHT,
-    MODEL_POWDERY_MILDEW,
     SUBENTRY_TYPE_TREE,
 )
 from .models.crops import GENERIC_CROP, crop_options, stage_options
-
-MODEL_LABELS = {
-    MODEL_FROST: "Risque de gel (seuils phénologiques)",
-    MODEL_LATE_BLIGHT: "Mildiou (Hutton + Smith)",
-    MODEL_POWDERY_MILDEW: "Oïdium (indice Gubler-Thomas)",
-}
-
 
 def _optional_entity(key: str, defaults: dict, **selector_kwargs):
     """Sélecteur d'entité facultatif, sans valeur par défaut fantôme."""
@@ -100,10 +90,11 @@ def _site_schema(defaults: dict | None = None) -> dict:
         )
     ] = selector.SelectSelector(
         selector.SelectSelectorConfig(
-            options=[
-                selector.SelectOptionDict(value=key, label=MODEL_LABELS[key])
-                for key in AVAILABLE_MODELS
-            ],
+            options=list(AVAILABLE_MODELS),
+            # Les libellés viennent de strings.json : Home Assistant les
+            # traduit dans la langue de l'utilisateur. Passer « label »
+            # ici figerait le texte dans une seule langue.
+            translation_key="enabled_models",
             multiple=True,
         )
     )
@@ -148,10 +139,8 @@ def _tree_schema(crop: str | None = None, defaults: dict | None = None) -> vol.S
         ): selector.TextSelector(),
         vol.Required(CONF_CROP, default=crop): selector.SelectSelector(
             selector.SelectSelectorConfig(
-                options=[
-                    selector.SelectOptionDict(value=key, label=label)
-                    for key, label in crop_options()
-                ],
+                options=crop_options(),
+                translation_key="crop",
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
         ),
@@ -159,14 +148,12 @@ def _tree_schema(crop: str | None = None, defaults: dict | None = None) -> vol.S
 
     stages = stage_options(crop)
     if stages:
-        default_stage = defaults.get(CONF_STAGE) or stages[0][0]
+        default_stage = defaults.get(CONF_STAGE) or stages[0]
         schema[vol.Required(CONF_STAGE, default=default_stage)] = (
             selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=[
-                        selector.SelectOptionDict(value=key, label=label)
-                        for key, label in stages
-                    ],
+                    options=stages,
+                    translation_key="stage",
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             )

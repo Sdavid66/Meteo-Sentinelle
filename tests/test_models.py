@@ -576,4 +576,84 @@ already = tree_mod.Tree.from_subentry("y", {"crop": "apple", "tree_name": "Pommi
 check(already.display_name == "Pommier Golden",
       "espèce non répétée si le nom la contient déjà")
 
+# ----------------------------------------------------------------------
+# Traductions : toute clé exposée à l'interface doit être traduite
+# ----------------------------------------------------------------------
+#
+# Une clé sans traduction ne provoque aucune erreur : Home Assistant
+# affiche simplement « full_bloom » à l'utilisateur. C'est exactement le
+# genre de régression qu'on ne voit qu'en production, d'où ce contrôle.
+
+print("\n--- traductions des libellés ---")
+
+import json as _json
+
+_TR_DIR = ROOT / "custom_components" / "meteo_sentinelle"
+_LANGS = {
+    path.stem: _json.loads(path.read_text(encoding="utf-8"))
+    for path in sorted((_TR_DIR / "translations").glob("*.json"))
+}
+check(set(_LANGS) >= {"en", "fr"}, "les traductions anglaise et française existent")
+
+_RISK_LEVELS = list(const.RISK_LEVELS)
+_STAGES = crops.all_stage_keys()
+_CROPS = crops.crop_options()
+
+for _lang, _data in sorted(_LANGS.items()):
+    _sel = _data.get("selector", {})
+    _ent = _data.get("entity", {})
+
+    _crop_opts = set(_sel.get("crop", {}).get("options", {}))
+    check(set(_CROPS) <= _crop_opts,
+          f"{_lang} : toutes les espèces sont traduites")
+
+    _stage_opts = set(_sel.get("stage", {}).get("options", {}))
+    check(set(_STAGES) <= _stage_opts,
+          f"{_lang} : tous les stades sont traduits dans le sélecteur")
+
+    _select_states = set(
+        _ent.get("select", {}).get("phenology_stage", {}).get("state", {})
+    )
+    check(set(_STAGES) <= _select_states,
+          f"{_lang} : tous les stades sont traduits pour l'entité select")
+
+    _sensor = _ent.get("sensor", {})
+    for _key in ("frost_risk", "late_blight_risk", "powdery_mildew_risk"):
+        check(set(_RISK_LEVELS) <= set(_sensor.get(_key, {}).get("state", {})),
+              f"{_lang} : niveaux de risque traduits pour {_key}")
+
+    # Un nom manquant afficherait la clé technique dans l'interface.
+    for _key in (
+        "frost_risk", "late_blight_risk", "powdery_mildew_risk",
+        "phenology_stage", "powdery_mildew_index", "late_blight_protection",
+        "powdery_mildew_protection", "growing_degree_days", "data_source",
+    ):
+        check(bool(_sensor.get(_key, {}).get("name")),
+              f"{_lang} : le capteur {_key} a un nom traduit")
+
+# Les fichiers doivent exposer exactement les mêmes clés : une clé
+# présente en français mais absente en anglais passerait inaperçue.
+def _flat(data, prefix=""):
+    out = set()
+    for key, value in data.items():
+        out.add(prefix + key)
+        if isinstance(value, dict):
+            out |= _flat(value, prefix + key + ".")
+    return out
+
+_reference = _flat(_LANGS["en"])
+for _lang, _data in sorted(_LANGS.items()):
+    check(_flat(_data) == _reference,
+          f"{_lang} : mêmes clés de traduction que l'anglais")
+
+_strings = _json.loads((_TR_DIR / "strings.json").read_text(encoding="utf-8"))
+check(_flat(_strings) == _reference,
+      "strings.json expose les mêmes clés que les traductions")
+
+# Aucun libellé lisible ne doit subsister dans les options renvoyées par
+# le code : ce sont des clés techniques, pas du texte affichable.
+check(all(" " not in key for key in _CROPS + _STAGES),
+      "les options exposées sont des clés techniques, pas des libellés")
+
+
 print(f"\n=== {_checks} vérifications passées ===")

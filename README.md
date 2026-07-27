@@ -396,6 +396,29 @@ en deçà d'un outil professionnel sur trois points :
 Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le détail des choix de
 conception.
 
+## Langue de l'interface
+
+L'intégration s'affiche dans la langue de Home Assistant : espèces,
+stades phénologiques, niveaux de risque et noms de capteurs existent en
+français et en anglais, et basculent automatiquement selon la langue de
+l'utilisateur.
+
+Conséquence à connaître pour les automatisations : les entités exposent
+une **clé technique** comme état (`full_bloom`), pas le texte affiché
+(« Pleine floraison »). C'est Home Assistant qui traduit à l'affichage.
+Une condition doit donc comparer la clé :
+
+```yaml
+condition:
+  - condition: state
+    entity_id: sensor.pommier_stade_phenologique
+    state: "full_bloom"   # et non « Pleine floraison »
+```
+
+Les notifications restent en français : Home Assistant n'offre pas de
+mécanisme de traduction pour le texte libre. Le blueprint fourni et les
+événements permettent de composer vos propres messages.
+
 ## Icône dans HACS et Home Assistant
 
 Depuis Home Assistant 2026.3, une intégration personnalisée peut fournir

@@ -90,9 +90,131 @@
     }
   },
   "entity": {
+    "select": {
+      "phenology_stage": {
+        "name": "Stade phénologique",
+        "state": {
+          "silver_tip": "Pointe argentée",
+          "green_tip": "Pointe verte",
+          "half_inch_green": "Pousse de 1 cm",
+          "tight_cluster": "Bouquet serré",
+          "first_pink": "Début rose",
+          "full_pink": "Pleine floraison rose",
+          "first_bloom": "Début floraison",
+          "full_bloom": "Pleine floraison",
+          "swollen_bud": "Bourgeon gonflé",
+          "bud_burst": "Débourrement",
+          "green_cluster": "Bouquet vert",
+          "white_bud": "Bouton blanc",
+          "full_white": "Plein blanc",
+          "petal_fall": "Chute des pétales",
+          "first_swell": "Premier gonflement",
+          "tip_separation": "Écartement des écailles",
+          "first_white": "Début blanc",
+          "in_the_shuck": "Jeune fruit engainé",
+          "shuck_split": "Sortie de l'engainement",
+          "side_white": "Blanc latéral",
+          "post_bloom": "Après floraison",
+          "calyx_green": "Calice vert",
+          "quarter_inch_green": "Pousse de 0,5 cm",
+          "pink": "Stade rose",
+          "growing": "En végétation",
+          "emerged": "Levée effectuée",
+          "dormant": "Dormance",
+          "bud_swell": "Bourgeon gonflé",
+          "first_leaves": "Premières feuilles",
+          "shoots_10cm": "Rameaux 10 cm"
+        }
+      }
+    },
     "sensor": {
-      "stage": {
-        "name": "Stade phénologique"
+      "frost_risk": {
+        "name": "Risque de gel",
+        "state": {
+          "none": "Aucun",
+          "watch": "À surveiller",
+          "warning": "Alerte",
+          "severe": "Danger"
+        }
+      },
+      "late_blight_risk": {
+        "name": "Risque de mildiou",
+        "state": {
+          "none": "Aucun",
+          "watch": "À surveiller",
+          "warning": "Alerte",
+          "severe": "Danger"
+        }
+      },
+      "powdery_mildew_risk": {
+        "name": "Risque d'oïdium",
+        "state": {
+          "none": "Aucun",
+          "watch": "À surveiller",
+          "warning": "Alerte",
+          "severe": "Danger"
+        }
+      },
+      "phenology_stage": {
+        "name": "Stade phénologique",
+        "state": {
+          "silver_tip": "Pointe argentée",
+          "green_tip": "Pointe verte",
+          "half_inch_green": "Pousse de 1 cm",
+          "tight_cluster": "Bouquet serré",
+          "first_pink": "Début rose",
+          "full_pink": "Pleine floraison rose",
+          "first_bloom": "Début floraison",
+          "full_bloom": "Pleine floraison",
+          "swollen_bud": "Bourgeon gonflé",
+          "bud_burst": "Débourrement",
+          "green_cluster": "Bouquet vert",
+          "white_bud": "Bouton blanc",
+          "full_white": "Plein blanc",
+          "petal_fall": "Chute des pétales",
+          "first_swell": "Premier gonflement",
+          "tip_separation": "Écartement des écailles",
+          "first_white": "Début blanc",
+          "in_the_shuck": "Jeune fruit engainé",
+          "shuck_split": "Sortie de l'engainement",
+          "side_white": "Blanc latéral",
+          "post_bloom": "Après floraison",
+          "calyx_green": "Calice vert",
+          "quarter_inch_green": "Pousse de 0,5 cm",
+          "pink": "Stade rose",
+          "growing": "En végétation",
+          "emerged": "Levée effectuée",
+          "dormant": "Dormance",
+          "bud_swell": "Bourgeon gonflé",
+          "first_leaves": "Premières feuilles",
+          "shoots_10cm": "Rameaux 10 cm"
+        }
+      },
+      "powdery_mildew_index": {
+        "name": "Indice oïdium (Gubler-Thomas)"
+      },
+      "late_blight_protection": {
+        "name": "Protection mildiou"
+      },
+      "powdery_mildew_protection": {
+        "name": "Protection oïdium"
+      },
+      "growing_degree_days": {
+        "name": "Degrés-jours cumulés"
+      },
+      "data_source": {
+        "name": "Source des données",
+        "state": {
+          "ecowitt": "Station locale",
+          "meteoswiss": "Station officielle",
+          "mixed": "Sources mixtes",
+          "unavailable": "Indisponible"
+        }
+      }
+    },
+    "switch": {
+      "auto_advance": {
+        "name": "Avancement automatique du stade"
       }
     }
   },
@@ -159,6 +281,64 @@
           "name": "Stade",
           "description": "Clé technique du stade (ex. full_bloom)."
         }
+      }
+    }
+  },
+  "selector": {
+    "crop": {
+      "options": {
+        "generic": "Générique (seuils fixes, sans stade)",
+        "apple": "Pommier",
+        "pear": "Poirier",
+        "apricot": "Abricotier",
+        "plum": "Prunier",
+        "peach": "Pêcher / nectarinier",
+        "sweet_cherry": "Cerisier doux",
+        "tender_annual": "Annuelles gélives (tomate, courgette, basilic, haricot)",
+        "potato": "Pomme de terre (feuillage)",
+        "hardy_vegetable": "Légumes rustiques (chou, poireau, épinard)",
+        "vine": "Vigne"
+      }
+    },
+    "stage": {
+      "options": {
+        "silver_tip": "Pointe argentée",
+        "green_tip": "Pointe verte",
+        "half_inch_green": "Pousse de 1 cm",
+        "tight_cluster": "Bouquet serré",
+        "first_pink": "Début rose",
+        "full_pink": "Pleine floraison rose",
+        "first_bloom": "Début floraison",
+        "full_bloom": "Pleine floraison",
+        "swollen_bud": "Bourgeon gonflé",
+        "bud_burst": "Débourrement",
+        "green_cluster": "Bouquet vert",
+        "white_bud": "Bouton blanc",
+        "full_white": "Plein blanc",
+        "petal_fall": "Chute des pétales",
+        "first_swell": "Premier gonflement",
+        "tip_separation": "Écartement des écailles",
+        "first_white": "Début blanc",
+        "in_the_shuck": "Jeune fruit engainé",
+        "shuck_split": "Sortie de l'engainement",
+        "side_white": "Blanc latéral",
+        "post_bloom": "Après floraison",
+        "calyx_green": "Calice vert",
+        "quarter_inch_green": "Pousse de 0,5 cm",
+        "pink": "Stade rose",
+        "growing": "En végétation",
+        "emerged": "Levée effectuée",
+        "dormant": "Dormance",
+        "bud_swell": "Bourgeon gonflé",
+        "first_leaves": "Premières feuilles",
+        "shoots_10cm": "Rameaux 10 cm"
+      }
+    },
+    "enabled_models": {
+      "options": {
+        "frost": "Risque de gel (seuils phénologiques)",
+        "late_blight": "Mildiou (Hutton + Smith)",
+        "powdery_mildew": "Oïdium (indice Gubler-Thomas)"
       }
     }
   }

@@ -193,19 +193,37 @@ STAGE_LABELS = {
 }
 
 
-def crop_options() -> list[tuple[str, str]]:
-    """Liste (clé, libellé) pour le config flow, culture générique incluse."""
-    options = [(GENERIC_CROP, "Générique (seuils fixes, sans stade)")]
-    options += [(crop.key, crop.label) for crop in CROPS.values()]
-    return options
+def crop_options() -> list[str]:
+    """Clés des cultures pour le config flow, culture générique incluse.
+
+    Ce sont des **clés techniques**, pas des libellés : Home Assistant les
+    traduit à l'affichage via la section « selector » de strings.json, en
+    fonction de la langue de l'utilisateur. Renvoyer du texte ici le
+    figerait dans une seule langue.
+    """
+    return [GENERIC_CROP] + [crop.key for crop in CROPS.values()]
 
 
-def stage_options(crop_key: str) -> list[tuple[str, str]]:
-    """Stades disponibles pour une culture, dans l'ordre phénologique."""
+def stage_options(crop_key: str) -> list[str]:
+    """Clés des stades d'une culture, dans l'ordre phénologique."""
     crop = CROPS.get(crop_key)
     if crop is None:
         return []
-    return [(stage, STAGE_LABELS.get(stage, stage)) for stage in crop.stages]
+    return list(crop.stages)
+
+
+def all_stage_keys() -> list[str]:
+    """Tous les stades connus, toutes cultures confondues.
+
+    Sert à déclarer les options d'un capteur d'énumération, qui doit
+    annoncer l'ensemble des valeurs qu'il peut prendre.
+    """
+    seen: list[str] = []
+    for crop in CROPS.values():
+        for stage in crop.stages:
+            if stage not in seen:
+                seen.append(stage)
+    return seen
 
 
 def thresholds(crop_key: str, stage_key: str | None) -> StageThresholds | None:

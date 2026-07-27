@@ -90,9 +90,131 @@
     }
   },
   "entity": {
+    "select": {
+      "phenology_stage": {
+        "name": "Growth stage",
+        "state": {
+          "silver_tip": "Silver tip",
+          "green_tip": "Green tip",
+          "half_inch_green": "Half-inch green",
+          "tight_cluster": "Tight cluster",
+          "first_pink": "First pink",
+          "full_pink": "Full pink",
+          "first_bloom": "First bloom",
+          "full_bloom": "Full bloom",
+          "swollen_bud": "Swollen bud",
+          "bud_burst": "Bud burst",
+          "green_cluster": "Green cluster",
+          "white_bud": "White bud",
+          "full_white": "Full white",
+          "petal_fall": "Petal fall",
+          "first_swell": "First swell",
+          "tip_separation": "Tip separation",
+          "first_white": "First white",
+          "in_the_shuck": "In the shuck",
+          "shuck_split": "Shuck split",
+          "side_white": "Side white",
+          "post_bloom": "Post bloom",
+          "calyx_green": "Calyx green",
+          "quarter_inch_green": "Quarter-inch green",
+          "pink": "Pink",
+          "growing": "Growing",
+          "emerged": "Emerged",
+          "dormant": "Dormant",
+          "bud_swell": "Bud swell",
+          "first_leaves": "First leaves",
+          "shoots_10cm": "Shoots 10 cm"
+        }
+      }
+    },
     "sensor": {
-      "stage": {
-        "name": "Phenological stage"
+      "frost_risk": {
+        "name": "Frost risk",
+        "state": {
+          "none": "None",
+          "watch": "Watch",
+          "warning": "Warning",
+          "severe": "Severe"
+        }
+      },
+      "late_blight_risk": {
+        "name": "Late blight risk",
+        "state": {
+          "none": "None",
+          "watch": "Watch",
+          "warning": "Warning",
+          "severe": "Severe"
+        }
+      },
+      "powdery_mildew_risk": {
+        "name": "Powdery mildew risk",
+        "state": {
+          "none": "None",
+          "watch": "Watch",
+          "warning": "Warning",
+          "severe": "Severe"
+        }
+      },
+      "phenology_stage": {
+        "name": "Growth stage",
+        "state": {
+          "silver_tip": "Silver tip",
+          "green_tip": "Green tip",
+          "half_inch_green": "Half-inch green",
+          "tight_cluster": "Tight cluster",
+          "first_pink": "First pink",
+          "full_pink": "Full pink",
+          "first_bloom": "First bloom",
+          "full_bloom": "Full bloom",
+          "swollen_bud": "Swollen bud",
+          "bud_burst": "Bud burst",
+          "green_cluster": "Green cluster",
+          "white_bud": "White bud",
+          "full_white": "Full white",
+          "petal_fall": "Petal fall",
+          "first_swell": "First swell",
+          "tip_separation": "Tip separation",
+          "first_white": "First white",
+          "in_the_shuck": "In the shuck",
+          "shuck_split": "Shuck split",
+          "side_white": "Side white",
+          "post_bloom": "Post bloom",
+          "calyx_green": "Calyx green",
+          "quarter_inch_green": "Quarter-inch green",
+          "pink": "Pink",
+          "growing": "Growing",
+          "emerged": "Emerged",
+          "dormant": "Dormant",
+          "bud_swell": "Bud swell",
+          "first_leaves": "First leaves",
+          "shoots_10cm": "Shoots 10 cm"
+        }
+      },
+      "powdery_mildew_index": {
+        "name": "Powdery mildew index (Gubler-Thomas)"
+      },
+      "late_blight_protection": {
+        "name": "Late blight protection"
+      },
+      "powdery_mildew_protection": {
+        "name": "Powdery mildew protection"
+      },
+      "growing_degree_days": {
+        "name": "Accumulated growing degree days"
+      },
+      "data_source": {
+        "name": "Data source",
+        "state": {
+          "ecowitt": "Local station",
+          "meteoswiss": "Official station",
+          "mixed": "Mixed sources",
+          "unavailable": "Unavailable"
+        }
+      }
+    },
+    "switch": {
+      "auto_advance": {
+        "name": "Advance growth stage automatically"
       }
     }
   },
@@ -159,6 +281,64 @@
           "name": "Stage",
           "description": "Technical stage key (e.g. full_bloom)."
         }
+      }
+    }
+  },
+  "selector": {
+    "crop": {
+      "options": {
+        "generic": "Generic (fixed thresholds, no growth stage)",
+        "apple": "Apple",
+        "pear": "Pear",
+        "apricot": "Apricot",
+        "plum": "Plum",
+        "peach": "Peach / nectarine",
+        "sweet_cherry": "Sweet cherry",
+        "tender_annual": "Tender annuals (tomato, courgette, basil, bean)",
+        "potato": "Potato (foliage)",
+        "hardy_vegetable": "Hardy vegetables (cabbage, leek, spinach)",
+        "vine": "Grapevine"
+      }
+    },
+    "stage": {
+      "options": {
+        "silver_tip": "Silver tip",
+        "green_tip": "Green tip",
+        "half_inch_green": "Half-inch green",
+        "tight_cluster": "Tight cluster",
+        "first_pink": "First pink",
+        "full_pink": "Full pink",
+        "first_bloom": "First bloom",
+        "full_bloom": "Full bloom",
+        "swollen_bud": "Swollen bud",
+        "bud_burst": "Bud burst",
+        "green_cluster": "Green cluster",
+        "white_bud": "White bud",
+        "full_white": "Full white",
+        "petal_fall": "Petal fall",
+        "first_swell": "First swell",
+        "tip_separation": "Tip separation",
+        "first_white": "First white",
+        "in_the_shuck": "In the shuck",
+        "shuck_split": "Shuck split",
+        "side_white": "Side white",
+        "post_bloom": "Post bloom",
+        "calyx_green": "Calyx green",
+        "quarter_inch_green": "Quarter-inch green",
+        "pink": "Pink",
+        "growing": "Growing",
+        "emerged": "Emerged",
+        "dormant": "Dormant",
+        "bud_swell": "Bud swell",
+        "first_leaves": "First leaves",
+        "shoots_10cm": "Shoots 10 cm"
+      }
+    },
+    "enabled_models": {
+      "options": {
+        "frost": "Frost risk (phenological thresholds)",
+        "late_blight": "Late blight (Hutton + Smith)",
+        "powdery_mildew": "Powdery mildew (Gubler-Thomas index)"
       }
     }
   }

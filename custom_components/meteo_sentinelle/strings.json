@@ -3,162 +3,342 @@
     "step": {
       "user": {
         "title": "Météo Sentinelle",
-        "description": "Capteurs et prévisions communs au site. Les arbres surveillés s'ajoutent ensuite un par un depuis la page de l'intégration.",
+        "description": "Sensors and forecasts shared across the site. Monitored trees are added one by one afterwards, from the integration page.",
         "data": {
-          "name": "Nom du site",
-          "temperature_entity": "Capteur de température",
-          "humidity_entity": "Capteur d'humidité",
-          "wind_speed_entity": "Capteur de vent (optionnel)",
-          "rain_rate_entity": "Capteur d'intensité de pluie, en mm/h (optionnel)",
-          "leaf_wetness_entity": "Capteur d'humectation foliaire (optionnel)",
-          "weather_entity": "Entité météo pour les prévisions (ex. MeteoSwiss)",
-          "enabled_models": "Modèles de risque à activer",
-          "powdery_mildew_rain_penalty": "Oïdium : tenir compte de l'effet inhibiteur de la pluie",
-          "notifications": "Créer des notifications dans Home Assistant"
+          "name": "Site name",
+          "temperature_entity": "Temperature sensor",
+          "humidity_entity": "Humidity sensor",
+          "wind_speed_entity": "Wind speed sensor (optional)",
+          "rain_rate_entity": "Rain rate sensor, in mm/h (optional)",
+          "leaf_wetness_entity": "Leaf wetness sensor (optional)",
+          "weather_entity": "Weather entity for forecasts (e.g. MeteoSwiss)",
+          "enabled_models": "Risk models to enable",
+          "powdery_mildew_rain_penalty": "Powdery mildew: account for the inhibiting effect of rain",
+          "notifications": "Create notifications in Home Assistant"
         }
       },
       "fallback": {
-        "title": "Sources de secours (optionnel)",
-        "description": "Si vous utilisez l'intégration MeteoSwiss (ou une autre station officielle), indiquez ici ses capteurs temps réel. Ils prendront automatiquement le relais lorsqu'un capteur Ecowitt est absent ou tombe en panne.",
+        "title": "Backup sources (optional)",
+        "description": "If you use the MeteoSwiss integration (or another official station), point to its real-time sensors here. They automatically take over whenever an Ecowitt sensor is missing or fails.",
         "data": {
-          "fallback_temperature_entity": "Température de secours (MeteoSwiss)",
-          "fallback_humidity_entity": "Humidité de secours (MeteoSwiss)",
-          "fallback_wind_speed_entity": "Vent de secours (MeteoSwiss)",
-          "fallback_rain_rate_entity": "Pluie de secours (MeteoSwiss)"
+          "fallback_temperature_entity": "Backup temperature (MeteoSwiss)",
+          "fallback_humidity_entity": "Backup humidity (MeteoSwiss)",
+          "fallback_wind_speed_entity": "Backup wind speed (MeteoSwiss)",
+          "fallback_rain_rate_entity": "Backup rain (MeteoSwiss)"
         }
       }
     },
     "abort": {
-      "already_configured": "Cette instance est déjà configurée."
+      "already_configured": "This instance is already configured."
     }
   },
   "config_subentries": {
     "tree": {
-      "title": "Arbre surveillé",
+      "title": "Monitored tree",
       "step": {
         "tree": {
-          "title": "Ajouter un arbre",
-          "description": "Nommez l'arbre (« Golden du fond », « Cerisier de la terrasse ») et choisissez son espèce : le nom affiché combinera les deux, ce qui permet de distinguer les arbres dans toutes les listes.\n\nLe stade se met à jour automatiquement à partir du cumul de degrés-jours, et vous êtes notifié à chaque avancement. Vous pouvez toujours le corriger à la main : votre correction fait autorité. Le décalage permet de recaler le modèle si votre verger est régulièrement en avance (valeur positive) ou en retard (valeur négative) sur les prévisions.",
+          "title": "Add a tree",
+          "description": "Name the tree (\"Golden by the fence\", \"Cherry on the terrace\") and pick its species: the displayed name combines both, so trees stay distinguishable in every list.\n\nThe stage advances automatically from accumulated growing degree days, and you are notified each time. You can always correct it by hand — your correction takes precedence. The offset recalibrates the model if your orchard is consistently ahead (positive) or behind (negative) the table.",
           "data": {
-            "tree_name": "Nom de l'arbre",
-            "crop": "Espèce",
-            "stage": "Stade phénologique actuel",
-            "auto_advance": "Avancer le stade automatiquement (degrés-jours)",
-            "gdd_offset": "Décalage de degrés-jours (recalage local)"
+            "tree_name": "Tree name",
+            "crop": "Species",
+            "stage": "Current phenological stage",
+            "auto_advance": "Advance stage automatically (growing degree days)",
+            "gdd_offset": "Degree-day offset (local calibration)"
           }
         },
         "reconfigure": {
-          "title": "Modifier l'arbre",
-          "description": "Nommez l'arbre (« Golden du fond », « Cerisier de la terrasse ») et choisissez son espèce : le nom affiché combinera les deux, ce qui permet de distinguer les arbres dans toutes les listes.\n\nLe stade se met à jour automatiquement à partir du cumul de degrés-jours, et vous êtes notifié à chaque avancement. Vous pouvez toujours le corriger à la main : votre correction fait autorité. Le décalage permet de recaler le modèle si votre verger est régulièrement en avance (valeur positive) ou en retard (valeur négative) sur les prévisions.",
+          "title": "Edit tree",
+          "description": "Name the tree (\"Golden by the fence\", \"Cherry on the terrace\") and pick its species: the displayed name combines both, so trees stay distinguishable in every list.\n\nThe stage advances automatically from accumulated growing degree days, and you are notified each time. You can always correct it by hand — your correction takes precedence. The offset recalibrates the model if your orchard is consistently ahead (positive) or behind (negative) the table.",
           "data": {
-            "tree_name": "Nom de l'arbre",
-            "crop": "Espèce",
-            "stage": "Stade phénologique actuel",
-            "auto_advance": "Avancer le stade automatiquement (degrés-jours)",
-            "gdd_offset": "Décalage de degrés-jours (recalage local)"
+            "tree_name": "Tree name",
+            "crop": "Species",
+            "stage": "Current phenological stage",
+            "auto_advance": "Advance stage automatically (growing degree days)",
+            "gdd_offset": "Degree-day offset (local calibration)"
           }
         }
       },
-      "entry_type": "Arbre",
+      "entry_type": "Tree",
       "initiate_flow": {
-        "user": "Ajouter un arbre",
-        "reconfigure": "Modifier l'arbre"
+        "user": "Add a tree",
+        "reconfigure": "Edit tree"
       }
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Réglages du site",
-        "description": "Capteurs, prévisions et alertes. Les arbres se gèrent depuis la page de l'intégration.",
+        "title": "Site settings",
+        "description": "Sensors, forecasts and alerts. Trees are managed from the integration page.",
         "data": {
-          "temperature_entity": "Capteur de température",
-          "humidity_entity": "Capteur d'humidité",
-          "wind_speed_entity": "Capteur de vent (optionnel)",
-          "rain_rate_entity": "Capteur d'intensité de pluie, en mm/h (optionnel)",
-          "leaf_wetness_entity": "Capteur d'humectation foliaire (optionnel)",
-          "weather_entity": "Entité météo pour les prévisions (ex. MeteoSwiss)",
-          "enabled_models": "Modèles de risque à activer",
-          "powdery_mildew_rain_penalty": "Oïdium : tenir compte de l'effet inhibiteur de la pluie",
-          "notifications": "Créer des notifications dans Home Assistant",
-          "fallback_temperature_entity": "Température de secours (MeteoSwiss)",
-          "fallback_humidity_entity": "Humidité de secours (MeteoSwiss)",
-          "fallback_wind_speed_entity": "Vent de secours (MeteoSwiss)",
-          "fallback_rain_rate_entity": "Pluie de secours (MeteoSwiss)"
+          "temperature_entity": "Temperature sensor",
+          "humidity_entity": "Humidity sensor",
+          "wind_speed_entity": "Wind speed sensor (optional)",
+          "rain_rate_entity": "Rain rate sensor, in mm/h (optional)",
+          "leaf_wetness_entity": "Leaf wetness sensor (optional)",
+          "weather_entity": "Weather entity for forecasts (e.g. MeteoSwiss)",
+          "enabled_models": "Risk models to enable",
+          "powdery_mildew_rain_penalty": "Powdery mildew: account for the inhibiting effect of rain",
+          "notifications": "Create notifications in Home Assistant",
+          "fallback_temperature_entity": "Backup temperature (MeteoSwiss)",
+          "fallback_humidity_entity": "Backup humidity (MeteoSwiss)",
+          "fallback_wind_speed_entity": "Backup wind speed (MeteoSwiss)",
+          "fallback_rain_rate_entity": "Backup rain (MeteoSwiss)"
         }
       }
     }
   },
   "entity": {
+    "select": {
+      "phenology_stage": {
+        "name": "Growth stage",
+        "state": {
+          "silver_tip": "Silver tip",
+          "green_tip": "Green tip",
+          "half_inch_green": "Half-inch green",
+          "tight_cluster": "Tight cluster",
+          "first_pink": "First pink",
+          "full_pink": "Full pink",
+          "first_bloom": "First bloom",
+          "full_bloom": "Full bloom",
+          "swollen_bud": "Swollen bud",
+          "bud_burst": "Bud burst",
+          "green_cluster": "Green cluster",
+          "white_bud": "White bud",
+          "full_white": "Full white",
+          "petal_fall": "Petal fall",
+          "first_swell": "First swell",
+          "tip_separation": "Tip separation",
+          "first_white": "First white",
+          "in_the_shuck": "In the shuck",
+          "shuck_split": "Shuck split",
+          "side_white": "Side white",
+          "post_bloom": "Post bloom",
+          "calyx_green": "Calyx green",
+          "quarter_inch_green": "Quarter-inch green",
+          "pink": "Pink",
+          "growing": "Growing",
+          "emerged": "Emerged",
+          "dormant": "Dormant",
+          "bud_swell": "Bud swell",
+          "first_leaves": "First leaves",
+          "shoots_10cm": "Shoots 10 cm"
+        }
+      }
+    },
     "sensor": {
-      "stage": {
-        "name": "Stade phénologique"
+      "frost_risk": {
+        "name": "Frost risk",
+        "state": {
+          "none": "None",
+          "watch": "Watch",
+          "warning": "Warning",
+          "severe": "Severe"
+        }
+      },
+      "late_blight_risk": {
+        "name": "Late blight risk",
+        "state": {
+          "none": "None",
+          "watch": "Watch",
+          "warning": "Warning",
+          "severe": "Severe"
+        }
+      },
+      "powdery_mildew_risk": {
+        "name": "Powdery mildew risk",
+        "state": {
+          "none": "None",
+          "watch": "Watch",
+          "warning": "Warning",
+          "severe": "Severe"
+        }
+      },
+      "phenology_stage": {
+        "name": "Growth stage",
+        "state": {
+          "silver_tip": "Silver tip",
+          "green_tip": "Green tip",
+          "half_inch_green": "Half-inch green",
+          "tight_cluster": "Tight cluster",
+          "first_pink": "First pink",
+          "full_pink": "Full pink",
+          "first_bloom": "First bloom",
+          "full_bloom": "Full bloom",
+          "swollen_bud": "Swollen bud",
+          "bud_burst": "Bud burst",
+          "green_cluster": "Green cluster",
+          "white_bud": "White bud",
+          "full_white": "Full white",
+          "petal_fall": "Petal fall",
+          "first_swell": "First swell",
+          "tip_separation": "Tip separation",
+          "first_white": "First white",
+          "in_the_shuck": "In the shuck",
+          "shuck_split": "Shuck split",
+          "side_white": "Side white",
+          "post_bloom": "Post bloom",
+          "calyx_green": "Calyx green",
+          "quarter_inch_green": "Quarter-inch green",
+          "pink": "Pink",
+          "growing": "Growing",
+          "emerged": "Emerged",
+          "dormant": "Dormant",
+          "bud_swell": "Bud swell",
+          "first_leaves": "First leaves",
+          "shoots_10cm": "Shoots 10 cm"
+        }
+      },
+      "powdery_mildew_index": {
+        "name": "Powdery mildew index (Gubler-Thomas)"
+      },
+      "late_blight_protection": {
+        "name": "Late blight protection"
+      },
+      "powdery_mildew_protection": {
+        "name": "Powdery mildew protection"
+      },
+      "growing_degree_days": {
+        "name": "Accumulated growing degree days"
+      },
+      "data_source": {
+        "name": "Data source",
+        "state": {
+          "ecowitt": "Local station",
+          "meteoswiss": "Official station",
+          "mixed": "Mixed sources",
+          "unavailable": "Unavailable"
+        }
+      }
+    },
+    "switch": {
+      "auto_advance": {
+        "name": "Advance growth stage automatically"
       }
     }
   },
   "services": {
     "log_treatment": {
-      "name": "Enregistrer un traitement",
-      "description": "Déclare une application et calcule jusqu'à quand la culture est protégée.",
+      "name": "Log a treatment",
+      "description": "Records a spray application and works out how long the crop stays protected.",
       "fields": {
         "target": {
-          "name": "Maladie visée",
-          "description": "Modèle de risque concerné."
+          "name": "Target disease",
+          "description": "Risk model concerned."
         },
         "tree": {
-          "name": "Arbre(s)",
-          "description": "Laisser vide pour tous les arbres concernés."
+          "name": "Tree(s)",
+          "description": "Leave empty for all relevant trees."
         },
         "product": {
-          "name": "Produit",
-          "description": "Nom du produit appliqué."
+          "name": "Product",
+          "description": "Name of the product applied."
         },
         "residual_days": {
-          "name": "Rémanence (jours)",
-          "description": "Durée de protection indiquée par le fabricant."
+          "name": "Residual (days)",
+          "description": "Protection duration stated by the manufacturer."
         },
         "rainfast_mm": {
-          "name": "Lessivage (mm)",
-          "description": "Cumul de pluie annulant la protection."
+          "name": "Wash-off (mm)",
+          "description": "Cumulative rainfall that voids protection."
         }
       }
     },
     "clear_treatment": {
-      "name": "Effacer un traitement",
-      "description": "Supprime le traitement enregistré.",
+      "name": "Clear a treatment",
+      "description": "Removes the recorded treatment.",
       "fields": {
         "target": {
-          "name": "Maladie visée",
-          "description": "Laisser vide pour tout effacer."
+          "name": "Target disease",
+          "description": "Leave empty to clear all."
         },
         "tree": {
-          "name": "Arbre(s)",
-          "description": "Laisser vide pour tous les arbres."
+          "name": "Tree(s)",
+          "description": "Leave empty for all trees."
         }
       }
     },
     "reset_powdery_mildew_index": {
-      "name": "Réinitialiser l'indice oïdium",
-      "description": "Remet l'indice Gubler-Thomas à zéro.",
+      "name": "Reset powdery mildew index",
+      "description": "Sets the Gubler-Thomas index back to zero.",
       "fields": {
         "tree": {
-          "name": "Arbre(s)",
-          "description": "Laisser vide pour tous les arbres."
+          "name": "Tree(s)",
+          "description": "Leave empty for all trees."
         }
       }
     },
     "set_stage": {
-      "name": "Définir le stade phénologique",
-      "description": "Force le stade d'un ou plusieurs arbres.",
+      "name": "Set phenological stage",
+      "description": "Forces the stage of one or more trees.",
       "fields": {
         "tree": {
-          "name": "Arbre(s)",
-          "description": "Nom du ou des arbres concernés."
+          "name": "Tree(s)",
+          "description": "Name of the tree(s) concerned."
         },
         "stage": {
-          "name": "Stade",
-          "description": "Clé technique du stade (ex. full_bloom)."
+          "name": "Stage",
+          "description": "Technical stage key (e.g. full_bloom)."
         }
+      }
+    }
+  },
+  "selector": {
+    "crop": {
+      "options": {
+        "generic": "Generic (fixed thresholds, no growth stage)",
+        "apple": "Apple",
+        "pear": "Pear",
+        "apricot": "Apricot",
+        "plum": "Plum",
+        "peach": "Peach / nectarine",
+        "sweet_cherry": "Sweet cherry",
+        "tender_annual": "Tender annuals (tomato, courgette, basil, bean)",
+        "potato": "Potato (foliage)",
+        "hardy_vegetable": "Hardy vegetables (cabbage, leek, spinach)",
+        "vine": "Grapevine"
+      }
+    },
+    "stage": {
+      "options": {
+        "silver_tip": "Silver tip",
+        "green_tip": "Green tip",
+        "half_inch_green": "Half-inch green",
+        "tight_cluster": "Tight cluster",
+        "first_pink": "First pink",
+        "full_pink": "Full pink",
+        "first_bloom": "First bloom",
+        "full_bloom": "Full bloom",
+        "swollen_bud": "Swollen bud",
+        "bud_burst": "Bud burst",
+        "green_cluster": "Green cluster",
+        "white_bud": "White bud",
+        "full_white": "Full white",
+        "petal_fall": "Petal fall",
+        "first_swell": "First swell",
+        "tip_separation": "Tip separation",
+        "first_white": "First white",
+        "in_the_shuck": "In the shuck",
+        "shuck_split": "Shuck split",
+        "side_white": "Side white",
+        "post_bloom": "Post bloom",
+        "calyx_green": "Calyx green",
+        "quarter_inch_green": "Quarter-inch green",
+        "pink": "Pink",
+        "growing": "Growing",
+        "emerged": "Emerged",
+        "dormant": "Dormant",
+        "bud_swell": "Bud swell",
+        "first_leaves": "First leaves",
+        "shoots_10cm": "Shoots 10 cm"
+      }
+    },
+    "enabled_models": {
+      "options": {
+        "frost": "Frost risk (phenological thresholds)",
+        "late_blight": "Late blight (Hutton + Smith)",
+        "powdery_mildew": "Powdery mildew (Gubler-Thomas index)"
       }
     }
   }
