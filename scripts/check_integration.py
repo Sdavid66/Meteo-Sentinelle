@@ -142,6 +142,20 @@ def check_manifest(integration: Path) -> dict:
     elif manifest.get("domain"):
         ok("manifest.json : domain cohérent avec le nom du dossier")
 
+    # hassfest impose un ordre strict : domain, name, puis alphabétique.
+    # Une clé ajoutée « à sa place logique » fait échouer la CI, avec un
+    # message qu'on ne voit qu'après le push.
+    keys = list(manifest)
+    expected = [k for k in ("domain", "name") if k in manifest]
+    expected += sorted(k for k in manifest if k not in ("domain", "name"))
+    if keys != expected:
+        error(
+            "manifest.json : clés mal ordonnées. hassfest exige domain, name, "
+            "puis l'ordre alphabétique — attendu : " + ", ".join(expected)
+        )
+    else:
+        ok("manifest.json : clés ordonnées comme hassfest l'exige")
+
     for placeholder in ("YOUR_", "example.com", "<user>", "changeme"):
         for key, value in manifest.items():
             if isinstance(value, str) and placeholder in value:
