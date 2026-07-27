@@ -140,12 +140,18 @@ quelle autre source de capteurs Home Assistant peut servir de secours.
 
 ## Installation via HACS
 
+Météo Sentinelle est soumis au magasin HACS par défaut. En attendant que
+la soumission soit acceptée, ajoutez le dépôt en dépôt personnalisé :
+
 1. HACS → Intégrations → menu (⋮) → **Dépôts personnalisés**.
 2. Ajouter l'URL de ce dépôt, catégorie **Intégration**.
 3. Rechercher "Météo Sentinelle" et installer.
 4. Redémarrer Home Assistant.
 5. Paramètres → Appareils et services → Ajouter une intégration →
    "Météo Sentinelle".
+
+Une fois la soumission acceptée, les étapes 1 et 2 deviennent inutiles :
+l'intégration apparaîtra directement dans la recherche HACS.
 
 ## Configuration
 
@@ -416,8 +422,12 @@ en deçà d'un outil professionnel sur trois points :
   station météo, domaine `meteo_sentinelle`.
 - v0.6 : interface entièrement traduite (français et anglais).
 - v0.7 : blueprint de protection contre le gel, prêt à l'emploi.
-- **v0.8 (actuelle)** : documentation anglaise par défaut, blueprints
-  bilingues, notifications traduites.
+- v0.8 : documentation anglaise par défaut, blueprints bilingues,
+  notifications traduites.
+- **v1.0 (actuelle)** : première version stable — les fonctionnalités,
+  les noms d'entités et le contenu des événements sont désormais
+  considérés comme figés, et le dépôt est soumis au magasin HACS par
+  défaut.
 - Ensuite : tavelure du pommier (table de Mills), cohortes d'infection
   avec latence pour le mildiou, sensibilité variétale, apprentissage du
   décalage de degrés-jours sur les corrections manuelles.

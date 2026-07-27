@@ -132,11 +132,17 @@ as the fallback.
 
 ## Installing through HACS
 
+Météo Sentinelle has been submitted to the HACS default store. Until the
+submission is merged, add it as a custom repository:
+
 1. HACS → Integrations → menu (⋮) → **Custom repositories**.
 2. Add the URL of this repository, category **Integration**.
 3. Search for "Météo Sentinelle" and install it.
 4. Restart Home Assistant.
 5. Settings → Devices & services → Add integration → "Météo Sentinelle".
+
+Once the submission is merged, step 1 and 2 become unnecessary: the
+integration will show up directly in the HACS search.
 
 ## Configuration
 
@@ -397,8 +403,11 @@ Use this as an aid to vigilance, not as plant-health advice.
   `meteo_sentinelle` domain.
 - v0.6: fully translated interface (English and French).
 - v0.7: ready-made frost protection blueprint.
-- **v0.8 (current)**: English-first documentation, bilingual blueprints,
-  translated notifications.
+- v0.8: English-first documentation, bilingual blueprints, translated
+  notifications.
+- **v1.0 (current)**: first stable release — the feature set, the entity
+  names and the event payloads are now considered settled, and submitted
+  to the HACS default store.
 - Next: apple scab (Mills table), infection cohorts with latency for
   late blight, cultivar sensitivity, learning the degree day offset from
   the user's manual corrections.
