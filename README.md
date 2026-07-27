@@ -8,6 +8,7 @@ Intégration Home Assistant, installable via **HACS**, qui prédit les
 risques de **gel** et de **maladies des plantes** (mildiou, oïdium...)
 à partir des capteurs de **votre station météo, quelle qu'elle soit**,
 combinés aux prévisions météo.
+Si vous le souhaitez, vous pouvez me donner un peu de courage en me payant un café :-). 
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20the%20project-orange?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/sdavid66)
 ![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)
