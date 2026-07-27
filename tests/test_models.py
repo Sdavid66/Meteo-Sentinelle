@@ -656,4 +656,102 @@ check(all(" " not in key for key in _CROPS + _STAGES),
       "les options exposées sont des clés techniques, pas des libellés")
 
 
+# ----------------------------------------------------------------------
+# Blueprints : structure et cohérence des entrées
+# ----------------------------------------------------------------------
+#
+# Un blueprint cassé ne se voit qu'au moment où l'utilisateur tente de
+# l'importer. Ces contrôles sont donc purement structurels, mais ils
+# attrapent les fautes les plus coûteuses : une entrée référencée mais
+# jamais déclarée, ou repliée sans valeur par défaut (Home Assistant
+# refuse alors le blueprint).
+
+print("\n--- blueprints ---")
+
+try:
+    import yaml as _yaml
+except ImportError:
+    print("  (PyYAML absent : contrôle des blueprints ignoré)")
+else:
+    class _BlueprintLoader(_yaml.SafeLoader):
+        """!input n'est pas du YAML standard : lui donner un constructeur."""
+
+    _BlueprintLoader.add_constructor(
+        "!input", lambda loader, node: {"__input__": loader.construct_scalar(node)}
+    )
+
+    _BP_DIR = ROOT / "blueprints" / "automation" / "meteo_sentinelle"
+    _blueprints = sorted(_BP_DIR.glob("*.yaml"))
+    check(len(_blueprints) >= 2, "au moins deux blueprints sont fournis")
+
+    _KNOWN_EVENTS = {"meteo_sentinelle_risk_changed", "meteo_sentinelle_stage_advanced"}
+
+    for _path in _blueprints:
+        _doc = _yaml.load(_path.read_text(encoding="utf-8"), Loader=_BlueprintLoader)
+        _meta = _doc.get("blueprint", {})
+        _label = _path.name
+
+        check(_meta.get("domain") == "automation", f"{_label} : domaine automation")
+        check(bool(_meta.get("name")), f"{_label} : le blueprint est nommé")
+        check(bool(_meta.get("description")), f"{_label} : le blueprint est décrit")
+
+        # Les entrées peuvent être groupées en sections : une section se
+        # reconnaît à la présence d'une clé « input » imbriquée.
+        _declared = {}
+        _sections = {}
+        for _key, _value in (_meta.get("input") or {}).items():
+            if isinstance(_value, dict) and "input" in _value:
+                for _sub, _cfg in _value["input"].items():
+                    _declared[_sub] = _cfg
+                    _sections[_sub] = _value
+            else:
+                _declared[_key] = _value or {}
+
+        _used = set()
+
+        def _walk(node):
+            if isinstance(node, dict):
+                if set(node) == {"__input__"}:
+                    _used.add(node["__input__"])
+                    return
+                for _v in node.values():
+                    _walk(_v)
+            elif isinstance(node, list):
+                for _v in node:
+                    _walk(_v)
+
+        _walk({k: v for k, v in _doc.items() if k != "blueprint"})
+
+        check(_used <= set(_declared),
+              f"{_label} : toute entrée utilisée est déclarée")
+        check(set(_declared) <= _used,
+              f"{_label} : aucune entrée déclarée mais inutilisée")
+
+        # Home Assistant refuse une entrée repliée sans valeur par défaut.
+        for _name, _cfg in _declared.items():
+            if _sections.get(_name, {}).get("collapsed"):
+                check("default" in _cfg,
+                      f"{_label} : « {_name} » repliée a une valeur par défaut")
+
+        # Les sections exigent Home Assistant 2024.6 : sans min_version,
+        # le blueprint échoue silencieusement sur les versions antérieures.
+        if _sections:
+            check(bool(_meta.get("homeassistant", {}).get("min_version")),
+                  f"{_label} : min_version déclaré puisqu'il utilise des sections")
+
+        # Un blueprint qui écoute un événement inexistant ne se déclenche
+        # jamais, sans le moindre message.
+        _events = {
+            t.get("event_type")
+            for t in (_doc.get("triggers") or [])
+            if isinstance(t, dict) and t.get("trigger") == "event"
+        }
+        check(_events <= _KNOWN_EVENTS,
+              f"{_label} : n'écoute que des événements réellement émis")
+
+    # Les événements écoutés doivent correspondre aux constantes du code.
+    check({const.EVENT_RISK_CHANGED, const.EVENT_STAGE_ADVANCED} == _KNOWN_EVENTS,
+          "les événements des blueprints correspondent à ceux de const.py")
+
+
 print(f"\n=== {_checks} vérifications passées ===")

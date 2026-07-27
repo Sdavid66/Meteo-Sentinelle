@@ -250,10 +250,32 @@ Les données de l'événement contiennent l'arbre, l'espèce, le stade, le
 modèle, l'ancien et le nouveau niveau, un booléen `escalated` et un
 `detail` déjà rédigé.
 
-Un **blueprint** prêt à l'emploi
-(`blueprints/automation/meteo_sentinelle/alerte_sentinelle.yaml`) route
-ces événements vers le canal de votre choix, avec filtrage par niveau
-minimal et par type de risque.
+### Blueprints prêts à l'emploi
+
+Deux automatisations toutes faites, à installer en un clic — aucun YAML
+à écrire. Ces blueprints ne sont **pas** livrés par HACS (qui n'installe
+que `custom_components/`) : il faut les importer une fois.
+
+**Protection contre le gel** — prévient au franchissement du seuil,
+allume un dispositif de protection (câble chauffant, aspersion, prise
+connectée) et le coupe quand le risque retombe. Le dispositif est
+facultatif : sans lui, c'est une simple alerte gel.
+
+[![Ouvrir dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Fprotection_gel.yaml)
+
+**Alertes tous risques** — route gel, mildiou, oïdium et changements de
+stade vers le canal de votre choix, avec filtrage par niveau minimal et
+par type de risque.
+
+[![Ouvrir dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Falerte_meteo_sentinelle.yaml)
+
+Si le bouton ne fonctionne pas, copier l'URL du fichier YAML depuis
+`blueprints/automation/meteo_sentinelle/` et l'importer depuis
+**Paramètres → Automatisations et scènes → Blueprints → Importer**.
+
+Les deux blueprints ne se déclenchent qu'au **franchissement** du seuil
+choisi : rester en alerte ne renotifie pas, et repasser en dessous
+déclenche la remise à l'état normal.
 
 Deux principes de conception : on n'alerte **qu'aux changements** — un
 rappel toutes les 15 minutes apprendrait vite à ignorer le plugin — et

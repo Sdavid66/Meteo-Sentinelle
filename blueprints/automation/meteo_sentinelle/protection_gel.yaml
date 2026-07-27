@@ -1,0 +1,208 @@
+blueprint:
+  name: Météo Sentinelle — protection contre le gel
+  description: >-
+    Prête à l'emploi : prévient dès qu'un arbre surveillé passe en risque de
+    gel, et peut allumer un dispositif de protection (câble chauffant, bâche
+    motorisée, aspersion, prise connectée), puis l'éteindre quand le risque
+    retombe.
+
+
+    Le message indique l'arbre concerné, son stade phénologique, la
+    température minimale attendue et le seuil à partir duquel les dégâts
+    commencent — c'est cette comparaison qui rend l'alerte utile : −2 °C n'a
+    pas le même sens en dormance et en pleine floraison.
+
+
+    Il faut avoir configuré au moins un arbre dans Météo Sentinelle. Tous les
+    champs sauf le premier sont facultatifs : en ne renseignant que la
+    notification, ce blueprint se comporte comme une simple alerte.
+  domain: automation
+  author: Sdavid66
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    notification:
+      name: Notification
+      icon: mdi:bell-alert
+      collapsed: false
+      input:
+        notify_service:
+          name: Service de notification
+          description: >-
+            Par exemple `notify.mobile_app_mon_telephone`, ou
+            `notify.persistent_notification` pour rester dans Home Assistant.
+            Laisser vide pour ne pas notifier et se contenter d'agir sur un
+            dispositif.
+          default: notify.persistent_notification
+          selector:
+            text:
+
+    declenchement:
+      name: Déclenchement
+      icon: mdi:thermometer-alert
+      collapsed: false
+      input:
+        minimum_level:
+          name: Niveau minimal
+          description: >-
+            « À surveiller » prévient tôt, au risque de fausses alertes.
+            « Alerte » correspond au seuil où les premiers dégâts deviennent
+            probables : c'est le réglage conseillé.
+          default: warning
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: À surveiller — anticiper largement
+                  value: watch
+                - label: Alerte — premiers dégâts probables (conseillé)
+                  value: warning
+                - label: Danger — dégâts importants attendus
+                  value: severe
+        trees:
+          name: Limiter à certains arbres
+          description: >-
+            Noms des arbres à surveiller, un par ligne, tels qu'ils
+            apparaissent dans Météo Sentinelle. Laisser vide pour tous les
+            arbres.
+          default: []
+          selector:
+            text:
+              multiple: true
+
+    protection:
+      name: Dispositif de protection (facultatif)
+      icon: mdi:shield-sun
+      collapsed: true
+      input:
+        protection_entities:
+          name: À allumer en cas de gel
+          description: >-
+            Prise, interrupteur ou vanne commandant votre protection.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - switch
+                    - light
+                    - input_boolean
+                    - valve
+        turn_off_when_clear:
+          name: Éteindre quand le risque retombe
+          description: >-
+            Coupe le dispositif dès que le risque repasse sous le niveau
+            choisi. À désactiver si vous préférez couper vous-même après
+            avoir constaté le dégel.
+          default: true
+          selector:
+            boolean:
+
+mode: queued
+max: 25
+
+triggers:
+  - trigger: event
+    event_type: meteo_sentinelle_risk_changed
+    event_data:
+      model: frost
+    id: frost
+
+variables:
+  minimum_level: !input minimum_level
+  trees: !input trees
+  protection_entities: !input protection_entities
+  turn_off_when_clear: !input turn_off_when_clear
+  notify_service: !input notify_service
+  # Les niveaux sont des clés techniques : on les ordonne pour pouvoir
+  # comparer « au moins ce niveau » sans dépendre de la langue affichée.
+  ranks:
+    none: 0
+    watch: 1
+    warning: 2
+    severe: 3
+  wanted: "{{ ranks.get(minimum_level, 2) }}"
+  current: "{{ ranks.get(trigger.event.data.level, 0) }}"
+  previous: "{{ ranks.get(trigger.event.data.previous_level, 0) }}"
+  # Arbre concerné : la liste vide vaut « tous les arbres ».
+  tree_matches: >-
+    {{ trees | count == 0 or trigger.event.data.tree in trees }}
+
+conditions:
+  - condition: template
+    value_template: "{{ tree_matches }}"
+  # On n'agit qu'au franchissement du seuil, dans un sens ou dans l'autre :
+  # sans cela, chaque variation au-dessus du seuil renotifierait.
+  - condition: template
+    value_template: >-
+      {{ (current >= wanted and previous < wanted)
+         or (current < wanted and previous >= wanted) }}
+
+actions:
+  - choose:
+      # ---------------------------------------------------------------
+      # Le risque franchit le seuil : alerter et protéger.
+      # ---------------------------------------------------------------
+      - conditions:
+          - condition: template
+            value_template: "{{ current >= wanted }}"
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ protection_entities | count > 0 }}"
+            then:
+              - action: homeassistant.turn_on
+                target:
+                  entity_id: "{{ protection_entities }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ notify_service | trim != '' }}"
+            then:
+              - action: "{{ notify_service }}"
+                data:
+                  title: >-
+                    Gel — {{ trigger.event.data.tree }}
+                  message: >-
+                    {% set d = trigger.event.data %}
+                    {%- set mini = d.reference_min -%}
+                    {%- set seuil = d.t10 -%}
+                    Risque {{ d.level_label | default(d.level) }}.
+                    {% if d.stage_label %}Stade : {{ d.stage_label }}.{% endif %}
+                    {% if mini is not none %}
+                    Minimale attendue {{ mini | round(1) }} °C{% if seuil is not none %},
+                    premiers dégâts à partir de {{ seuil | round(1) }} °C{% endif %}.
+                    {% endif %}
+                    {%- if d.detail %} {{ d.detail }}.{% endif %}
+                    {% if protection_entities | count > 0 %}
+                    Protection activée.
+                    {% endif %}
+
+      # ---------------------------------------------------------------
+      # Le risque retombe sous le seuil : couper et informer.
+      # ---------------------------------------------------------------
+      - conditions:
+          - condition: template
+            value_template: "{{ current < wanted }}"
+        sequence:
+          - if:
+              - condition: template
+                value_template: >-
+                  {{ turn_off_when_clear and protection_entities | count > 0 }}
+            then:
+              - action: homeassistant.turn_off
+                target:
+                  entity_id: "{{ protection_entities }}"
+
+              - if:
+                  - condition: template
+                    value_template: "{{ notify_service | trim != '' }}"
+                then:
+                  - action: "{{ notify_service }}"
+                    data:
+                      title: >-
+                        Gel écarté — {{ trigger.event.data.tree }}
+                      message: >-
+                        Le risque de gel est repassé sous le seuil surveillé.
+                        Protection coupée.

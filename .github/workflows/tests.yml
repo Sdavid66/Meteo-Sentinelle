@@ -12,5 +12,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      # Sans PyYAML, les contrôles des blueprints se contentent de
+      # s'ignorer : ils passeraient en silence sans rien vérifier.
+      - name: Installer les dépendances de test
+        run: pip install pyyaml pillow
+
       - name: Exécuter la suite de tests des modèles
         run: python tests/test_models.py
+
+      - name: Contrôler la structure de l'intégration
+        run: python scripts/check_integration.py .
