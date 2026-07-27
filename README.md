@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/logo.png" alt="Météo Sentinelle" width="260">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/logo.png" alt="Météo Sentinelle" width="260">
 </p>
 
 <h1 align="center">Météo Sentinelle</h1>
@@ -12,7 +12,7 @@ Si vous le souhaitez, vous pouvez me donner un peu de courage en me payant un ca
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20the%20project-orange?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/sdavid66)
 ![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)
-![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)
+![Version](https://img.shields.io/github/v/release/Sdavid66/Meteo-Sentinelle?label=version&color=blue)
 
 ## Pourquoi
 

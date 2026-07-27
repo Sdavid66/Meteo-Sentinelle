@@ -376,6 +376,44 @@ def check_module_functions(integration: Path) -> None:
         ok("__init__.py : async_setup_entry et async_unload_entry présents")
 
 
+def check_readme_images(root: Path) -> None:
+    """HACS rend le README hors du contexte du dépôt.
+
+    Un chemin relatif s'affiche parfaitement sur GitHub et reste cassé
+    dans HACS : l'erreur ne se voit qu'en ouvrant la fiche du plugin.
+    """
+    readme = root / "README.md"
+    if not readme.exists():
+        return
+
+    content = readme.read_text(encoding="utf-8")
+    sources = re.findall(r"<img[^>]+src=[\"']([^\"']+)[\"']", content)
+    sources += re.findall(r"!\[[^\]]*\]\(([^)\s]+)", content)
+
+    relative = [
+        src
+        for src in sources
+        if not src.startswith(("http://", "https://", "data:"))
+    ]
+    if relative:
+        warn(
+            "README.md : image(s) en chemin relatif, invisibles dans HACS qui "
+            "rend le README hors du dépôt — "
+            + ", ".join(sorted(set(relative))[:5])
+            + ". Utiliser une URL absolue raw.githubusercontent.com "
+            "(le dépôt doit être public)."
+        )
+    elif sources:
+        ok("README.md : toutes les images sont en URL absolue")
+
+    if re.search(r"img\.shields\.io/badge/version-\d", content):
+        warn(
+            "README.md : le badge de version est écrit en dur et se périmera "
+            "à la prochaine release. Préférer "
+            "img.shields.io/github/v/release/<owner>/<repo>."
+        )
+
+
 def check_hardcoded_labels(integration: Path) -> None:
     """Un libellé écrit en Python ne passera jamais par les traductions.
 
@@ -753,6 +791,7 @@ def main() -> int:
         check_migration(integration)
         check_deprecated_patterns(integration)
         check_hardcoded_labels(integration)
+        check_readme_images(root)
         check_translations(integration)
         check_services(integration)
         check_brand(integration)
