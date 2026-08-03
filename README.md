@@ -16,7 +16,8 @@ with weather forecasts.
 If you find it useful, you can buy me a coffee :-).
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20the%20project-orange?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/sdavid66)
-![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)
+![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Sdavid66&repository=Meteo-Sentinelle&category=integration)
 ![Version](https://img.shields.io/github/v/release/Sdavid66/Meteo-Sentinelle?label=version&color=blue)
 
 ## Why
@@ -132,17 +133,12 @@ as the fallback.
 
 ## Installing through HACS
 
-Météo Sentinelle has been submitted to the HACS default store. Until the
-submission is merged, add it as a custom repository:
+Météo Sentinelle is part of the HACS default store, so there is no
+custom repository to add.
 
-1. HACS → Integrations → menu (⋮) → **Custom repositories**.
-2. Add the URL of this repository, category **Integration**.
-3. Search for "Météo Sentinelle" and install it.
-4. Restart Home Assistant.
-5. Settings → Devices & services → Add integration → "Météo Sentinelle".
-
-Once the submission is merged, step 1 and 2 become unnecessary: the
-integration will show up directly in the HACS search.
+1. Open HACS and search for "Météo Sentinelle".
+2. Install it, then restart Home Assistant.
+3. Settings → Devices & services → Add integration → "Météo Sentinelle".
 
 ## Configuration
 
@@ -406,8 +402,8 @@ Use this as an aid to vigilance, not as plant-health advice.
 - v0.8: English-first documentation, bilingual blueprints, translated
   notifications.
 - **v1.0 (current)**: first stable release — the feature set, the entity
-  names and the event payloads are now considered settled, and submitted
-  to the HACS default store.
+  names and the event payloads are now considered settled, and the
+  integration is available in the HACS default store.
 - Next: apple scab (Mills table), infection cohorts with latency for
   late blight, cultivar sensitivity, learning the degree day offset from
   the user's manual corrections.

@@ -15,7 +15,8 @@ combinés aux prévisions météo.
 Si vous le souhaitez, vous pouvez me donner un peu de courage en me payant un café :-). 
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20the%20project-orange?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/sdavid66)
-![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)
+![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)
+[![Ouvrir ce dépôt dans HACS sur votre instance Home Assistant.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Sdavid66&repository=Meteo-Sentinelle&category=integration)
 ![Version](https://img.shields.io/github/v/release/Sdavid66/Meteo-Sentinelle?label=version&color=blue)
 
 ## Pourquoi
@@ -140,18 +141,13 @@ quelle autre source de capteurs Home Assistant peut servir de secours.
 
 ## Installation via HACS
 
-Météo Sentinelle est soumis au magasin HACS par défaut. En attendant que
-la soumission soit acceptée, ajoutez le dépôt en dépôt personnalisé :
+Météo Sentinelle fait partie du magasin HACS par défaut : il n'y a aucun
+dépôt personnalisé à ajouter.
 
-1. HACS → Intégrations → menu (⋮) → **Dépôts personnalisés**.
-2. Ajouter l'URL de ce dépôt, catégorie **Intégration**.
-3. Rechercher "Météo Sentinelle" et installer.
-4. Redémarrer Home Assistant.
-5. Paramètres → Appareils et services → Ajouter une intégration →
-   "Météo Sentinelle".
-
-Une fois la soumission acceptée, les étapes 1 et 2 deviennent inutiles :
-l'intégration apparaîtra directement dans la recherche HACS.
+1. Ouvrir HACS et rechercher « Météo Sentinelle ».
+2. Installer, puis redémarrer Home Assistant.
+3. Paramètres → Appareils et services → Ajouter une intégration →
+   « Météo Sentinelle ».
 
 ## Configuration
 
@@ -426,8 +422,8 @@ en deçà d'un outil professionnel sur trois points :
   notifications traduites.
 - **v1.0 (actuelle)** : première version stable — les fonctionnalités,
   les noms d'entités et le contenu des événements sont désormais
-  considérés comme figés, et le dépôt est soumis au magasin HACS par
-  défaut.
+  considérés comme figés, et l'intégration est disponible dans le
+  magasin HACS par défaut.
 - Ensuite : tavelure du pommier (table de Mills), cohortes d'infection
   avec latence pour le mildiou, sensibilité variétale, apprentissage du
   décalage de degrés-jours sur les corrections manuelles.
