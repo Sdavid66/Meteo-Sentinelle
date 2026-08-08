@@ -5,7 +5,7 @@
 <h1 align="center">Météo Sentinelle</h1>
 
 <p align="center">
-  <a href="README.md">English</a> · <b>Français</b>
+  <a href="https://github.com/Sdavid66/Meteo-Sentinelle/blob/main/README.md">English</a> · <b>Français</b>
 </p>
 
 Intégration Home Assistant, installable via **HACS**, qui prédit les
@@ -428,7 +428,7 @@ en deçà d'un outil professionnel sur trois points :
   avec latence pour le mildiou, sensibilité variétale, apprentissage du
   décalage de degrés-jours sur les corrections manuelles.
 
-Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le détail des choix de
+Voir [ARCHITECTURE.md](https://github.com/Sdavid66/Meteo-Sentinelle/blob/main/ARCHITECTURE.md) pour le détail des choix de
 conception.
 
 ## Langue de l'interface
@@ -485,4 +485,4 @@ tomates !), vous pouvez m'offrir un café :
 
 ## Licence
 
-GPL-3.0 — voir [LICENSE](LICENSE). Le code reste libre : vous pouvez l'utiliser, le modifier et le redistribuer, à condition que toute version dérivée reste elle aussi open source sous la même licence.
+GPL-3.0 — voir [LICENSE](https://github.com/Sdavid66/Meteo-Sentinelle/blob/main/LICENSE). Le code reste libre : vous pouvez l'utiliser, le modifier et le redistribuer, à condition que toute version dérivée reste elle aussi open source sous la même licence.

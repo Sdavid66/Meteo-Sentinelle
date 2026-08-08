@@ -5,7 +5,7 @@
 <h1 align="center">Météo Sentinelle</h1>
 
 <p align="center">
-  <b>English</b> · <a href="README.fr.md">Français</a>
+  <b>English</b> · <a href="https://github.com/Sdavid66/Meteo-Sentinelle/blob/main/README.fr.md">Français</a>
 </p>
 
 A Home Assistant integration, installable through **HACS**, that predicts
@@ -408,7 +408,7 @@ Use this as an aid to vigilance, not as plant-health advice.
   late blight, cultivar sensitivity, learning the degree day offset from
   the user's manual corrections.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the design rationale (in
+See [ARCHITECTURE.md](https://github.com/Sdavid66/Meteo-Sentinelle/blob/main/ARCHITECTURE.md) for the design rationale (in
 French).
 
 ## Interface language
@@ -461,6 +461,6 @@ can buy me a coffee:
 
 ## Licence
 
-GPL-3.0 — see [LICENSE](LICENSE). The code stays free: you may use,
+GPL-3.0 — see [LICENSE](https://github.com/Sdavid66/Meteo-Sentinelle/blob/main/LICENSE). The code stays free: you may use,
 modify and redistribute it, provided any derivative version also remains
 open source under the same licence.
