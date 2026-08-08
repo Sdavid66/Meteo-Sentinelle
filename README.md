@@ -459,8 +459,8 @@ can buy me a coffee:
 
 👉 [Buy Me a Coffee](https://buymeacoffee.com/sdavid66)
 
-## Licence
+## License
 
 GPL-3.0 — see [LICENSE](https://github.com/Sdavid66/Meteo-Sentinelle/blob/main/LICENSE). The code stays free: you may use,
 modify and redistribute it, provided any derivative version also remains
-open source under the same licence.
+open source under the same license.
