@@ -28,6 +28,7 @@ from .const import (
     MODEL_FROST,
     MODEL_LATE_BLIGHT,
     MODEL_POWDERY_MILDEW,
+    PEST_MODELS,
     RISK_LEVELS,
     RISK_SEVERE,
     RISK_WARNING,
@@ -39,11 +40,18 @@ _LOGGER = logging.getLogger(__name__)
 #: Chaque modèle emprunte son intitulé au capteur correspondant, déjà
 #: traduit : « Risque de gel » / « Frost risk ». Une table de libellés en
 #: dur ici retomberait dans le travers d'une seule langue.
+#:
+#: La convention « <modèle>_risk » vaut pour tous les modèles, y compris
+#: les ravageurs : la table n'existe plus que pour la documenter.
 MODEL_ENTITY_KEYS = {
     MODEL_FROST: "frost_risk",
     MODEL_LATE_BLIGHT: "late_blight_risk",
     MODEL_POWDERY_MILDEW: "powdery_mildew_risk",
 }
+
+
+def _entity_key(model: str) -> str:
+    return MODEL_ENTITY_KEYS.get(model, f"{model}_risk")
 
 #: Niveaux justifiant une notification (les autres restent en événement).
 NOTIFY_LEVELS = {RISK_WARNING, RISK_SEVERE}
@@ -99,6 +107,37 @@ def _disease_detail(model: str, result, tr: Translator) -> str:
     return ""
 
 
+def _pest_detail(result, tr: Translator) -> str:
+    """Phrase explicative pour un ravageur : où en est son cycle.
+
+    Le cumul brut ne parle à personne ; ce qui informe, c'est le jalon
+    atteint et ce qui reste avant le suivant. Un biofix estimé ou une
+    saison incomplète sont dits, parce qu'ils changent la confiance à
+    accorder au chiffre.
+    """
+    bits: list[str] = []
+    stage = getattr(result, "cycle_stage", None)
+    if stage:
+        bits.append(tr.pest_stage(stage))
+
+    remaining = getattr(result, "dd_to_next_cycle_stage", None)
+    following = getattr(result, "next_cycle_stage", None)
+    if remaining is not None and following:
+        bits.append(
+            tr.text(
+                "detail_pest_to_next",
+                degree_days=f"{remaining:.0f}",
+                stage=tr.pest_stage(following),
+            )
+        )
+
+    if getattr(result, "biofix_estimated", False):
+        bits.append(tr.text("detail_pest_estimated_biofix"))
+    if getattr(result, "incomplete_season", False):
+        bits.append(tr.text("detail_pest_incomplete_season"))
+    return ", ".join(bits)
+
+
 def build_risk_payload(
     tree, model: str, previous: str | None, result, tr: Translator
 ) -> dict:
@@ -118,7 +157,7 @@ def build_risk_payload(
         "stage": tree.stage,
         "stage_label": tr.stage(tree.stage),
         "model": model,
-        "model_label": tr.name("sensor", MODEL_ENTITY_KEYS.get(model, model)),
+        "model_label": tr.name("sensor", _entity_key(model)),
         "level": level,
         "level_label": tr.risk_level(level),
         "previous_level": previous,
@@ -129,6 +168,10 @@ def build_risk_payload(
         payload["t10"] = getattr(result, "t10", None)
         payload["t90"] = getattr(result, "t90", None)
         payload["reference_min"] = getattr(result, "reference_min", None)
+    elif model in PEST_MODELS:
+        payload["detail"] = _pest_detail(result, tr)
+        payload["cycle_stage"] = getattr(result, "cycle_stage", None)
+        payload["degree_days"] = getattr(result, "degree_days", None)
     else:
         payload["detail"] = _disease_detail(model, result, tr)
     return payload
@@ -178,11 +221,12 @@ def _notify_risk(hass: HomeAssistant, payload: dict, tr: Translator) -> None:
         lines.append(tr.text("notify_stage_line", stage=payload["stage_label"]))
     if payload.get("detail"):
         lines.append(payload["detail"])
-    lines.append(
-        tr.text("notify_frost_caveat")
-        if payload["model"] == MODEL_FROST
-        else tr.text("notify_disease_caveat")
-    )
+    if payload["model"] == MODEL_FROST:
+        lines.append(tr.text("notify_frost_caveat"))
+    elif payload["model"] in PEST_MODELS:
+        lines.append(tr.text("notify_pest_caveat"))
+    else:
+        lines.append(tr.text("notify_disease_caveat"))
     persistent_notification.async_create(
         hass,
         "\n".join(lines),

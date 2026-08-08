@@ -21,5 +21,8 @@ jobs:
       - name: Exécuter la suite de tests des modèles
         run: python tests/test_models.py
 
+      - name: Exécuter la suite de tests ravageurs et pulvérisation
+        run: python tests/test_pests.py
+
       - name: Contrôler la structure de l'intégration
         run: python scripts/check_integration.py .

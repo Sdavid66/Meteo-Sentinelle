@@ -1,0 +1,95 @@
+# Météo Sentinelle Assist sentences (English).
+#
+# This file is copied automatically into custom_sentences/en/ by the
+# integration. Edit it freely: as soon as it differs from the shipped
+# version, Météo Sentinelle stops rewriting it. Delete it to get the
+# original back.
+#
+# After editing: Developer tools → Actions → "conversation.reload".
+language: "en"
+
+intents:
+  MeteoSentinelleRisk:
+    data:
+      - sentences:
+          - "what (is|are) the risk[s] in the (orchard|garden)"
+          - "is there any risk in the (orchard|garden)"
+          - "what should I watch [out] for in the (orchard|garden)"
+
+      - sentences:
+          - "what (is|are) the risk[s] (on|for) {tree}"
+          - "is there any risk (on|for) {tree}"
+        slots:
+          tree: "{tree}"
+
+      - sentences:
+          - "(what is the|is there a) {model} risk"
+        slots:
+          model: "{model}"
+      - sentences:
+          - "(what is the|is there a) {model} risk (on|for) {tree}"
+        slots:
+          model: "{model}"
+          tree: "{tree}"
+
+  MeteoSentinelleTreatmentWindow:
+    data:
+      - sentences:
+          - "can I spray"
+          - "is it a good time to spray"
+          - "when can I spray"
+          - "when is the next spray window"
+
+      - sentences:
+          - "can I spray {day}"
+          - "is it a good time to spray {day}"
+        slots:
+          day: "{day}"
+
+  MeteoSentinelleStage:
+    data:
+      - sentences:
+          - "what (growth) stage is the (orchard|garden) at"
+
+      - sentences:
+          - "what (growth) stage is {tree} at"
+          - "what is the growth stage of {tree}"
+          - "how far along is {tree}"
+        slots:
+          tree: "{tree}"
+
+lists:
+  tree:
+    wildcard: true
+
+  day:
+    values:
+      - in: "today"
+        out: "today"
+      - in: "now"
+        out: "today"
+      - in: "tomorrow"
+        out: "tomorrow"
+
+  model:
+    values:
+      - in: "frost"
+        out: "frost"
+      - in: "late blight"
+        out: "late_blight"
+      - in: "blight"
+        out: "late_blight"
+      - in: "powdery mildew"
+        out: "powdery_mildew"
+      - in: "mildew"
+        out: "powdery_mildew"
+      - in: "codling moth"
+        out: "codling_moth"
+      - in: "cherry fruit fly"
+        out: "cherry_fruit_fly"
+      - in: "colorado potato beetle"
+        out: "colorado_potato_beetle"
+      - in: "potato beetle"
+        out: "colorado_potato_beetle"
+      - in: "grapevine moth"
+        out: "grapevine_moth"

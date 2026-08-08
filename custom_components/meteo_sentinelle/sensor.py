@@ -14,11 +14,16 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
+    MODEL_CHERRY_FRUIT_FLY,
+    MODEL_CODLING_MOTH,
+    MODEL_COLORADO_POTATO_BEETLE,
     MODEL_FROST,
+    MODEL_GRAPEVINE_MOTH,
     MODEL_LATE_BLIGHT,
     MODEL_POWDERY_MILDEW,
     RISK_LEVELS,
     SOURCE_NONE,
+    TREATABLE_MODELS,
 )
 from .entity import MeteoSentinelleSiteEntity, MeteoSentinelleTreeEntity
 from .models import phenology
@@ -29,19 +34,36 @@ RISK_ICONS = {
     MODEL_FROST: "mdi:snowflake-alert",
     MODEL_LATE_BLIGHT: "mdi:leaf-off",
     MODEL_POWDERY_MILDEW: "mdi:leaf-circle-outline",
+    MODEL_CODLING_MOTH: "mdi:butterfly-outline",
+    MODEL_CHERRY_FRUIT_FLY: "mdi:fruit-cherries",
+    MODEL_COLORADO_POTATO_BEETLE: "mdi:bug",
+    MODEL_GRAPEVINE_MOTH: "mdi:fruit-grapes-outline",
 }
 
 #: Clés de traduction, pas des libellés : Home Assistant résout chacune
 #: dans « entity.sensor.<clé> » de strings.json selon la langue choisie.
+#:
+#: Les ravageurs réutilisent délibérément l'entité de risque : leur état
+#: est un niveau (`none`/`watch`/`warning`/`severe`) comme les autres, ce
+#: qui les rend utilisables sans modification par les blueprints et les
+#: automatisations existantes. Le stade du cycle vit en attribut.
 RISK_TRANSLATION_KEYS = {
     MODEL_FROST: "frost_risk",
     MODEL_LATE_BLIGHT: "late_blight_risk",
     MODEL_POWDERY_MILDEW: "powdery_mildew_risk",
+    MODEL_CODLING_MOTH: "codling_moth_risk",
+    MODEL_CHERRY_FRUIT_FLY: "cherry_fruit_fly_risk",
+    MODEL_COLORADO_POTATO_BEETLE: "colorado_potato_beetle_risk",
+    MODEL_GRAPEVINE_MOTH: "grapevine_moth_risk",
 }
 
 PROTECTION_TRANSLATION_KEYS = {
     MODEL_LATE_BLIGHT: "late_blight_protection",
     MODEL_POWDERY_MILDEW: "powdery_mildew_protection",
+    MODEL_CODLING_MOTH: "codling_moth_protection",
+    MODEL_CHERRY_FRUIT_FLY: "cherry_fruit_fly_protection",
+    MODEL_COLORADO_POTATO_BEETLE: "colorado_potato_beetle_protection",
+    MODEL_GRAPEVINE_MOTH: "grapevine_moth_protection",
 }
 
 
@@ -53,7 +75,13 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
     # Entités du site, rattachées à l'entrée principale.
-    async_add_entities([DataSourceSensor(coordinator, entry), GddSensor(coordinator, entry)])
+    async_add_entities(
+        [
+            DataSourceSensor(coordinator, entry),
+            GddSensor(coordinator, entry),
+            SprayWindowSensor(coordinator, entry),
+        ]
+    )
 
     # Entités par arbre, rattachées à leur sous-entrée respective : c'est
     # ce qui fait apparaître un appareil distinct par arbre.
@@ -67,7 +95,7 @@ async def async_setup_entry(
         if MODEL_POWDERY_MILDEW in results:
             entities.append(MildewIndexSensor(coordinator, entry, tree))
 
-        for target in (MODEL_LATE_BLIGHT, MODEL_POWDERY_MILDEW):
+        for target in TREATABLE_MODELS:
             if target in results:
                 entities.append(ProtectionSensor(coordinator, entry, tree, target))
 
@@ -259,9 +287,53 @@ class GddSensor(MeteoSentinelleSiteEntity, SensorEntity):
         return {
             "season_year": gdd.season_year,
             "base_temperature": phenology.GDD_BASE_C,
+            "first_day": gdd.first_day,
             "last_day": gdd.last_day,
+            # Un cumul démarré en cours d'année est une sous-estimation :
+            # le dire évite d'attribuer au modèle un retard qui vient de
+            # la date d'installation.
+            "complete_season": gdd.complete_season,
             "recent_days": gdd.recent,
         }
+
+
+class SprayWindowSensor(MeteoSentinelleSiteEntity, SensorEntity):
+    """Prochain créneau où pulvériser est possible.
+
+    L'état est l'heure de début du prochain créneau — donc directement
+    utilisable dans une automatisation ou un rappel. Quand un créneau est
+    déjà ouvert, c'est son propre début qui est renvoyé : l'attribut
+    `open_now` distingue les deux cas.
+    """
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:spray"
+
+    def __init__(self, coordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_spray_window"
+        self._attr_translation_key = "spray_window"
+
+    @property
+    def _advice(self):
+        return getattr(self.coordinator, "spray", None)
+
+    @property
+    def native_value(self):
+        advice = self._advice
+        if advice is None:
+            return None
+        window = advice.current or advice.upcoming
+        return window.start if window else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        advice = self._advice
+        if advice is None:
+            return {}
+        data = advice.as_dict()
+        data["open_now"] = advice.current is not None
+        return data
 
 
 class DataSourceSensor(MeteoSentinelleSiteEntity, SensorEntity):
@@ -291,4 +363,11 @@ class DataSourceSensor(MeteoSentinelleSiteEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return dict(getattr(self.coordinator, "sources", {}))
+        attributes = dict(getattr(self.coordinator, "sources", {}))
+        # La couverture d'historique voyage avec la source des données :
+        # les deux répondent à la même question — « les modèles ont-ils
+        # réellement de quoi travailler ? »
+        coverage = getattr(self.coordinator, "history_coverage", None)
+        if coverage:
+            attributes["history"] = dict(coverage)
+        return attributes

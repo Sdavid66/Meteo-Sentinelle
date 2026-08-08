@@ -65,7 +65,25 @@ MODEL_FROST = "frost"
 MODEL_LATE_BLIGHT = "late_blight"
 MODEL_POWDERY_MILDEW = "powdery_mildew"
 
-AVAILABLE_MODELS = [MODEL_FROST, MODEL_LATE_BLIGHT, MODEL_POWDERY_MILDEW]
+# Ravageurs suivis par degrés-jours. Ce sont des modèles comme les
+# autres : une clé, un capteur, un niveau de risque — la seule
+# différence est la nature du calcul (cumul thermique plutôt que
+# fenêtres d'humidité).
+MODEL_CODLING_MOTH = "codling_moth"
+MODEL_CHERRY_FRUIT_FLY = "cherry_fruit_fly"
+MODEL_COLORADO_POTATO_BEETLE = "colorado_potato_beetle"
+MODEL_GRAPEVINE_MOTH = "grapevine_moth"
+
+PEST_MODELS = [
+    MODEL_CODLING_MOTH,
+    MODEL_CHERRY_FRUIT_FLY,
+    MODEL_COLORADO_POTATO_BEETLE,
+    MODEL_GRAPEVINE_MOTH,
+]
+
+DISEASE_MODELS = [MODEL_LATE_BLIGHT, MODEL_POWDERY_MILDEW]
+
+AVAILABLE_MODELS = [MODEL_FROST, *DISEASE_MODELS, *PEST_MODELS]
 DEFAULT_ENABLED_MODELS = [MODEL_FROST]
 
 #: Modèles maladie pertinents pour chaque espèce. Le gel s'applique à
@@ -85,8 +103,24 @@ CROP_DISEASE_MODELS: dict[str, list[str]] = {
     "generic": [MODEL_LATE_BLIGHT, MODEL_POWDERY_MILDEW],
 }
 
+#: Ravageurs pertinents pour chaque espèce. La liste est délibérément
+#: étroite : un modèle de carpocapse sur un cerisier produirait un
+#: résultat sans signification, et une alerte sans signification coûte
+#: plus cher qu'une absence d'alerte — elle érode la confiance.
+#: La culture générique n'en reçoit aucun : sans espèce connue, aucun
+#: cycle d'insecte n'est déterminable.
+CROP_PEST_MODELS: dict[str, list[str]] = {
+    "apple": [MODEL_CODLING_MOTH],
+    "pear": [MODEL_CODLING_MOTH],
+    "sweet_cherry": [MODEL_CHERRY_FRUIT_FLY],
+    "potato": [MODEL_COLORADO_POTATO_BEETLE],
+    "vine": [MODEL_GRAPEVINE_MOTH],
+}
+
 #: Modèles pouvant faire l'objet d'un traitement phytosanitaire.
-TREATABLE_MODELS = [MODEL_LATE_BLIGHT, MODEL_POWDERY_MILDEW]
+#: Les ravageurs en font partie : la rémanence et le lessivage d'un
+#: insecticide se raisonnent exactement comme ceux d'un fongicide.
+TREATABLE_MODELS = [*DISEASE_MODELS, *PEST_MODELS]
 
 DEFAULT_NAME = "Sentinelle"
 DEFAULT_UPDATE_INTERVAL_MINUTES = 15
@@ -105,6 +139,8 @@ SERVICE_LOG_TREATMENT = "log_treatment"
 SERVICE_CLEAR_TREATMENT = "clear_treatment"
 SERVICE_RESET_MILDEW_INDEX = "reset_powdery_mildew_index"
 SERVICE_SET_STAGE = "set_stage"
+SERVICE_SET_BIOFIX = "set_biofix"
+SERVICE_CLEAR_BIOFIX = "clear_biofix"
 
 ATTR_TARGET = "target"
 ATTR_PRODUCT = "product"
@@ -112,6 +148,34 @@ ATTR_RESIDUAL_DAYS = "residual_days"
 ATTR_RAINFAST_MM = "rainfast_mm"
 ATTR_TREE = "tree"
 ATTR_STAGE = "stage"
+ATTR_PEST = "pest"
+ATTR_DATE = "date"
+
+# --- Diagnostic de l'historique ---
+#: Les modèles maladie raisonnent sur des séries horaires continues.
+#: En deçà de cette couverture sur la fenêtre interrogée, ils produisent
+#: des faux négatifs silencieux : mieux vaut le dire que le subir.
+MIN_HISTORY_COVERAGE_HOURS = 48
+ISSUE_INSUFFICIENT_HISTORY = "insufficient_history"
+ISSUE_NO_RECORDER = "no_recorder"
+
+# --- Interface ---
+#: La carte Lovelace est livrée avec l'intégration et servie par Home
+#: Assistant lui-même : aucun dépôt ni ressource à ajouter à la main.
+FRONTEND_DIR = "frontend"
+FRONTEND_SCRIPT = "meteo-sentinelle-card.js"
+#: Home Assistant sert des **dossiers** statiques, pas des fichiers
+#: isolés : on publie donc le dossier, et on pointe le script dedans.
+FRONTEND_BASE_URL = f"/{DOMAIN}"
+FRONTEND_URL = f"{FRONTEND_BASE_URL}/{FRONTEND_SCRIPT}"
+
+# --- Assist ---
+INTENT_RISK = "MeteoSentinelleRisk"
+INTENT_TREATMENT_WINDOW = "MeteoSentinelleTreatmentWindow"
+INTENT_STAGE = "MeteoSentinelleStage"
+
+CONF_ASSIST_SENTENCES = "assist_sentences"
+DEFAULT_ASSIST_SENTENCES = True
 
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.state"

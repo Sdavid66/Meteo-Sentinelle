@@ -301,6 +301,102 @@ La logique de transformation est isolée dans `tree.legacy_tree_data` et
 Assistant — c'est ce qui permet de couvrir la migration dans la suite de
 tests plutôt que de la découvrir en production.
 
+### 5 quinquies. Ravageurs, voix et interface (v1.1)
+
+**Un ravageur est un modèle comme un autre.** La tentation était de
+créer une famille d'entités distincte — un capteur « stade du cycle »
+par insecte. Choix inverse : un ravageur produit un `RiskSensor`
+ordinaire, dont l'état est un niveau `none`/`watch`/`warning`/`severe`.
+Conséquence immédiate : les événements, les notifications et les deux
+blueprints existants fonctionnent sans une ligne de modification, et une
+automatisation écrite pour le mildiou marche pour le carpocapse.
+
+Le niveau ne mesure pas la gravité des dégâts mais l'**urgence
+d'agir** : le doryphore au stade L2 est en `severe` parce que c'est là
+que l'intervention est efficace, et retombe en `none` à la nymphose,
+alors même que la défoliation est maximale. C'est contre-intuitif à la
+lecture, mais c'est ce qui rend le capteur actionnable.
+
+**Le biofix, ou le refus d'inventer une origine.** Un cumul de
+degrés-jours pour le carpocapse démarré au 1er janvier se trompe de
+plusieurs semaines : le modèle n'a de sens qu'à partir de la première
+capture au piège. Trois options existaient :
+
+1. exiger le piège — rigoureux, mais inutilisable pour la plupart des
+   jardiniers ;
+2. démarrer au 1er janvier en silence — utilisable, et faux ;
+3. estimer le biofix à partir d'un stade phénologique, en le disant.
+
+La troisième a été retenue, avec la même hiérarchie que pour les stades :
+l'observation déclarée (`set_biofix`) écrase l'estimation et n'est jamais
+réécrasée. Quand aucun ancrage phénologique n'est documenté — le
+doryphore — le capteur annonce `awaiting_biofix` plutôt qu'un niveau
+calculé sur une origine arbitraire. Le mode 2 n'a jamais été envisagé
+sérieusement : c'est exactement le genre de faux négatif que la
+réparation « historique insuffisant » cherche par ailleurs à éliminer.
+
+Le cumul depuis le biofix se calcule par **soustraction** du cumul
+saisonnier mémorisé au moment du biofix. Aucune relecture d'historique,
+et l'opération reste juste même si Home Assistant a été arrêté entre
+temps.
+
+**Un cumulateur par barème, pas par ravageur.** `required_accumulators`
+regroupe les modèles par couple (base, plafond). Le carpocapse et le
+doryphore partagent la base 10 °C mais pas le plafond : ils ne partagent
+donc pas leur série, ce que le test vérifie explicitement.
+
+**Le drapeau de saison incomplète.** Un cumul censé partir du 1er janvier
+mais commencé en avril produit un total plus bas que la réalité — donc
+un cycle annoncé *en retard*, jamais en avance. Le biais est
+systématique et connu : `GddState.first_day` permet de le détecter et
+`incomplete_season` de le propager. Ne rien dire aurait fait porter au
+modèle un défaut qui vient de la date d'installation.
+
+**La réparation plutôt que le silence.** Sans historique, les modèles
+maladie annoncent « aucun risque ». Ce n'est pas une panne visible :
+c'est une réponse plausible et fausse, le pire cas possible pour un
+outil de vigilance. Le registre des réparations était l'endroit exact
+pour ça — visible, non bloquant, et refermable automatiquement. Le
+critère retenu est la mesure **la moins bien couverte** : un critère
+« 6 h continues à HR ≥ 90 % » ne vaut rien avec une température
+complète et une humidité absente.
+
+**La carte servie par l'intégration.** L'usage établi est un second
+dépôt HACS de catégorie « plugin », que l'utilisateur installe puis
+déclare en ressource Lovelace. Deux étapes ratées par une bonne part des
+utilisateurs, pour un fichier de quelques kilo-octets déjà présent sur
+leur machine. L'intégration l'expose donc elle-même
+(`async_register_static_paths` + `add_extra_js_url`).
+
+Trois bénéfices : disponible dès l'installation, versionnée avec le
+composant — impossible d'avoir une carte et un composant désaccordés —
+et un dépôt de moins à maintenir. Contrepartie assumée : le script est
+chargé sur toutes les pages du frontend, y compris là où la carte n'est
+pas utilisée.
+
+**Les phrases Assist et l'écriture dans la configuration.** Home
+Assistant ne lit les phrases personnalisées que depuis
+`<config>/custom_sentences/<langue>/`, et l'API qui permettait à une
+intégration d'en enregistrer a été retirée. Le seul chemin praticable
+est la recopie.
+
+Écrire chez l'utilisateur mérite trois garde-fous, tous implémentés :
+la case à cocher dans les options, l'absence totale d'écrasement d'un
+fichier modifié (comparaison par empreinte), et un en-tête dans le
+fichier qui explique d'où il vient et comment s'en débarrasser.
+
+À noter, un effet de bord précieux : l'API LLM d'Assist construit
+automatiquement un outil par intent enregistré. Écrire les gestionnaires
+avec une `description` soignée les rend utilisables par un agent adossé
+à un modèle de langage **sans** ces phrases — deux publics couverts pour
+un seul travail.
+
+**`cycle_stage` et non `stage`.** Les attributs d'un capteur de risque
+portent déjà le stade phénologique de la plante. Nommer `stage` le jalon
+du cycle de l'insecte aurait produit une collision silencieuse, l'un
+écrasant l'autre selon l'ordre de construction du dictionnaire. Le
+renommage est explicite plutôt que défensif.
+
 ### 6. Identité visuelle
 
 Deux usages distincts, deux mécanismes différents :

@@ -14,7 +14,8 @@
           "weather_entity": "Entité météo pour les prévisions (ex. MeteoSwiss)",
           "enabled_models": "Modèles de risque à activer",
           "powdery_mildew_rain_penalty": "Oïdium : tenir compte de l'effet inhibiteur de la pluie",
-          "notifications": "Créer des notifications dans Home Assistant"
+          "notifications": "Créer des notifications dans Home Assistant",
+          "assist_sentences": "Installer les commandes vocales pour Assist"
         }
       },
       "fallback": {
@@ -81,12 +82,23 @@
           "enabled_models": "Modèles de risque à activer",
           "powdery_mildew_rain_penalty": "Oïdium : tenir compte de l'effet inhibiteur de la pluie",
           "notifications": "Créer des notifications dans Home Assistant",
+          "assist_sentences": "Installer les commandes vocales pour Assist",
           "fallback_temperature_entity": "Température de secours (MeteoSwiss)",
           "fallback_humidity_entity": "Humidité de secours (MeteoSwiss)",
           "fallback_wind_speed_entity": "Vent de secours (MeteoSwiss)",
           "fallback_rain_rate_entity": "Pluie de secours (MeteoSwiss)"
         }
       }
+    }
+  },
+  "issues": {
+    "insufficient_history": {
+      "title": "Historique insuffisant pour les modèles maladie",
+      "description": "Sur les {window} dernières heures, seules {hours} heures exploitables de température **et** d'humidité ont été retrouvées dans le recorder, alors qu'il en faut au moins {required}.\n\nLes modèles maladie (Hutton, Smith, Gubler-Thomas) sont définis en heures continues. Faute d'historique, ils ne trouvent aucune journée évaluable et annoncent « aucun risque » — ce qui est indiscernable d'une vraie absence de risque, et donc pire qu'un capteur absent.\n\nCauses habituelles : l'intégration a été installée il y a moins de quatre jours (dans ce cas l'alerte disparaîtra d'elle-même), les capteurs sont exclus du recorder, ou la durée de conservation du recorder est trop courte. Le gel n'est pas concerné : il travaille sur les prévisions, pas sur l'historique."
+    },
+    "no_recorder": {
+      "title": "Recorder indisponible",
+      "description": "Météo Sentinelle n'a pas pu lire l'historique. Les modèles maladie ne peuvent pas fonctionner du tout : ils reconstruisent des séries horaires à partir des états enregistrés.\n\nVérifiez que l'intégration `recorder` est active et qu'elle n'exclut pas les capteurs choisis pour ce site. Le gel continue de fonctionner, puisqu'il ne dépend que des prévisions."
     }
   },
   "entity": {
@@ -155,6 +167,42 @@
           "severe": "Danger"
         }
       },
+      "codling_moth_risk": {
+        "name": "Risque carpocapse",
+        "state": {
+          "none": "Aucun",
+          "watch": "À surveiller",
+          "warning": "Alerte",
+          "severe": "Danger"
+        }
+      },
+      "cherry_fruit_fly_risk": {
+        "name": "Risque mouche de la cerise",
+        "state": {
+          "none": "Aucun",
+          "watch": "À surveiller",
+          "warning": "Alerte",
+          "severe": "Danger"
+        }
+      },
+      "colorado_potato_beetle_risk": {
+        "name": "Risque doryphore",
+        "state": {
+          "none": "Aucun",
+          "watch": "À surveiller",
+          "warning": "Alerte",
+          "severe": "Danger"
+        }
+      },
+      "grapevine_moth_risk": {
+        "name": "Risque tordeuse de la grappe",
+        "state": {
+          "none": "Aucun",
+          "watch": "À surveiller",
+          "warning": "Alerte",
+          "severe": "Danger"
+        }
+      },
       "phenology_stage": {
         "name": "Stade phénologique",
         "state": {
@@ -199,6 +247,21 @@
       "powdery_mildew_protection": {
         "name": "Protection oïdium"
       },
+      "codling_moth_protection": {
+        "name": "Protection carpocapse"
+      },
+      "cherry_fruit_fly_protection": {
+        "name": "Protection mouche de la cerise"
+      },
+      "colorado_potato_beetle_protection": {
+        "name": "Protection doryphore"
+      },
+      "grapevine_moth_protection": {
+        "name": "Protection tordeuse de la grappe"
+      },
+      "spray_window": {
+        "name": "Prochaine fenêtre de traitement"
+      },
       "growing_degree_days": {
         "name": "Degrés-jours cumulés"
       },
@@ -224,8 +287,8 @@
       "description": "Déclare une application et calcule jusqu'à quand la culture est protégée.",
       "fields": {
         "target": {
-          "name": "Maladie visée",
-          "description": "Modèle de risque concerné."
+          "name": "Cible",
+          "description": "Maladie ou ravageur concerné."
         },
         "tree": {
           "name": "Arbre(s)",
@@ -250,7 +313,7 @@
       "description": "Supprime le traitement enregistré.",
       "fields": {
         "target": {
-          "name": "Maladie visée",
+          "name": "Cible",
           "description": "Laisser vide pour tout effacer."
         },
         "tree": {
@@ -280,6 +343,38 @@
         "stage": {
           "name": "Stade",
           "description": "Clé technique du stade (ex. full_bloom)."
+        }
+      }
+    },
+    "set_biofix": {
+      "name": "Déclarer un biofix",
+      "description": "Donne son origine au cumul de degrés-jours d'un ravageur : première capture soutenue au piège, ou premières pontes. Votre observation fait autorité sur le biofix estimé.",
+      "fields": {
+        "pest": {
+          "name": "Ravageur",
+          "description": "Modèle dont on déclare l'origine du cumul."
+        },
+        "tree": {
+          "name": "Arbre(s)",
+          "description": "Laisser vide pour tous les arbres concernés par ce ravageur."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Jour de l'observation. Par défaut aujourd'hui."
+        }
+      }
+    },
+    "clear_biofix": {
+      "name": "Effacer un biofix",
+      "description": "Retire l'origine du cumul ; le modèle se remet en attente d'observation.",
+      "fields": {
+        "pest": {
+          "name": "Ravageur",
+          "description": "Laisser vide pour effacer tous les ravageurs."
+        },
+        "tree": {
+          "name": "Arbre(s)",
+          "description": "Laisser vide pour tous les arbres."
         }
       }
     }
@@ -338,7 +433,29 @@
       "options": {
         "frost": "Risque de gel (seuils phénologiques)",
         "late_blight": "Mildiou (Hutton + Smith)",
-        "powdery_mildew": "Oïdium (indice Gubler-Thomas)"
+        "powdery_mildew": "Oïdium (indice Gubler-Thomas)",
+        "codling_moth": "Carpocapse (degrés-jours, pommier et poirier)",
+        "cherry_fruit_fly": "Mouche de la cerise (degrés-jours, cerisier)",
+        "colorado_potato_beetle": "Doryphore (degrés-jours, pomme de terre)",
+        "grapevine_moth": "Tordeuse de la grappe (degrés-jours, vigne)"
+      }
+    },
+    "treatable_model": {
+      "options": {
+        "late_blight": "Mildiou",
+        "powdery_mildew": "Oïdium",
+        "codling_moth": "Carpocapse",
+        "cherry_fruit_fly": "Mouche de la cerise",
+        "colorado_potato_beetle": "Doryphore",
+        "grapevine_moth": "Tordeuse de la grappe"
+      }
+    },
+    "pest": {
+      "options": {
+        "codling_moth": "Carpocapse",
+        "cherry_fruit_fly": "Mouche de la cerise",
+        "colorado_potato_beetle": "Doryphore",
+        "grapevine_moth": "Tordeuse de la grappe"
       }
     }
   },
@@ -359,6 +476,47 @@
     "detail_blight_one_day": "une journée favorable",
     "detail_blight_wet_hours": "{hours} h d'humidité continue hier",
     "detail_mildew_index": "indice {index}/100",
-    "detail_mildew_interval": "intervalle conseillé {days} jours"
+    "detail_mildew_interval": "intervalle conseillé {days} jours",
+    "notify_pest_caveat": "Les modèles de degrés-jours situent le ravageur dans son cycle ; ils ne disent rien du nombre d'individus présents. Confirmez au piège ou en observant l'arbre avant de traiter.",
+    "detail_pest_to_next": "{degree_days} °C·j avant {stage}",
+    "detail_pest_estimated_biofix": "biofix estimé d'après le stade phénologique, non observé",
+    "detail_pest_incomplete_season": "cumul démarré après le 1er janvier : le cycle est probablement plus avancé qu'affiché",
+    "pest_stage_flight": "vol en cours",
+    "pest_stage_egg_laying": "pontes",
+    "pest_stage_hatch_start": "début d'éclosion",
+    "pest_stage_hatch_peak": "éclosion généralisée",
+    "pest_stage_oviposition_peak": "pic de ponte",
+    "pest_stage_second_generation": "deuxième génération",
+    "pest_stage_approach": "émergence proche",
+    "pest_stage_emergence": "émergence des adultes",
+    "pest_stage_oviposition": "ponte en cours",
+    "pest_stage_eggs": "pontes déposées",
+    "pest_stage_instar_1": "larves L1",
+    "pest_stage_instar_2": "larves L2",
+    "pest_stage_instar_3": "larves L3",
+    "pest_stage_instar_4": "larves L4",
+    "pest_stage_pupation": "nymphose",
+    "pest_stage_first_flight": "premier vol",
+    "pest_stage_first_generation": "larves de première génération",
+    "pest_stage_second_flight": "deuxième vol",
+    "pest_stage_third_flight": "troisième vol",
+    "pest_stage_third_generation": "larves de troisième génération",
+    "intent_no_tree": "Aucun arbre n'est encore surveillé. Ajoutez-en un depuis la page de l'intégration Météo Sentinelle.",
+    "intent_no_data": "Je n'ai aucune donnée sur le verger pour le moment.",
+    "intent_risk_clear": "Rien à signaler sur {tree}.",
+    "intent_risk_worst": "Le risque le plus pressant est {model} sur {tree} : {level}.",
+    "intent_spray_open": "Oui, les conditions sont bonnes en ce moment, jusqu'à {end}.",
+    "intent_spray_upcoming": "Pas maintenant. La prochaine fenêtre s'ouvre à {start} et dure jusqu'à {end}.",
+    "intent_spray_tomorrow": "Oui, demain entre {start} et {end}.",
+    "intent_spray_none_tomorrow": "Aucune fenêtre favorable demain.",
+    "intent_spray_no_forecast": "Je n'ai pas de prévision horaire, je ne peux donc pas juger des conditions de traitement.",
+    "intent_spray_blocked_wind": "Pas maintenant : le vent est trop fort pour pulvériser.",
+    "intent_spray_blocked_rain": "Pas maintenant : de la pluie est prévue trop tôt après l'application.",
+    "intent_spray_blocked_temperature": "Pas maintenant : la température est hors de la plage utile.",
+    "intent_spray_blocked_wind_unknown": "Je n'ai pas de prévision de vent, je ne peux pas confirmer que les conditions sont sûres.",
+    "intent_spray_blocked_temperature_unknown": "Je n'ai pas de prévision de température, je ne peux pas confirmer que les conditions conviennent.",
+    "intent_spray_blocked_no_forecast": "Je n'ai pas de prévision horaire, je ne peux donc pas juger des conditions de traitement.",
+    "intent_spray_blocked_unknown": "Les conditions ne conviennent pas pour l'instant, et aucune fenêtre n'est en vue.",
+    "intent_stage": "{tree} est au stade {stage}."
   }
 }

@@ -12,26 +12,39 @@ from homeassistant.helpers import config_validation as cv
 
 from .alerting import process_risk_changes, process_stage_advances
 from .const import (
+    ATTR_DATE,
+    ATTR_PEST,
     ATTR_PRODUCT,
     ATTR_RAINFAST_MM,
     ATTR_RESIDUAL_DAYS,
     ATTR_STAGE,
     ATTR_TARGET,
     ATTR_TREE,
+    CONF_ASSIST_SENTENCES,
+    CONF_ENABLED_MODELS,
     CONF_NOTIFICATIONS,
+    DEFAULT_ASSIST_SENTENCES,
+    DEFAULT_ENABLED_MODELS,
     DEFAULT_NOTIFICATIONS,
     DOMAIN,
+    PEST_MODELS,
+    SERVICE_CLEAR_BIOFIX,
     SERVICE_CLEAR_TREATMENT,
     SERVICE_LOG_TREATMENT,
     SERVICE_RESET_MILDEW_INDEX,
+    SERVICE_SET_BIOFIX,
     SERVICE_SET_STAGE,
     SUBENTRY_TYPE_TREE,
     TREATABLE_MODELS,
 )
 from .coordinator import MeteoSentinelleCoordinator
+from .frontend import async_register_card
+from .history_check import async_check_history, async_clear_issues
+from .intents import async_setup_intents
 from .localize import async_preload
 from .models.treatments import DEFAULT_RAINFAST_MM, DEFAULT_RESIDUAL_DAYS
-from .tree import legacy_tree_data, strip_legacy_keys
+from .sentences import async_install_sentences
+from .tree import legacy_tree_data, match_trees, strip_legacy_keys
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,6 +81,21 @@ SET_STAGE_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_TREE): _TREE_SELECTOR,
         vol.Required(ATTR_STAGE): cv.string,
+    }
+)
+
+SET_BIOFIX_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_PEST): vol.In(PEST_MODELS),
+        vol.Optional(ATTR_TREE): _TREE_SELECTOR,
+        vol.Optional(ATTR_DATE): cv.date,
+    }
+)
+
+CLEAR_BIOFIX_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_PEST): vol.In(PEST_MODELS),
+        vol.Optional(ATTR_TREE): _TREE_SELECTOR,
     }
 )
 
@@ -142,6 +170,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _async_register_services(hass)
 
+    # La carte Lovelace et les intents ne dépendent pas de l'entrée :
+    # ils sont enregistrés une fois pour l'instance, et les fonctions
+    # concernées sont idempotentes.
+    await async_register_card(hass)
+    async_setup_intents(hass)
+
+    data = {**entry.data, **entry.options}
+    if data.get(CONF_ASSIST_SENTENCES, DEFAULT_ASSIST_SENTENCES):
+        await async_install_sentences(hass)
+
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -154,6 +192,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
+        async_clear_issues(hass, entry.entry_id)
         hass.data[DOMAIN].pop(entry.entry_id)
         if not hass.data[DOMAIN]:
             for service in (
@@ -161,6 +200,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_CLEAR_TREATMENT,
                 SERVICE_RESET_MILDEW_INDEX,
                 SERVICE_SET_STAGE,
+                SERVICE_SET_BIOFIX,
+                SERVICE_CLEAR_BIOFIX,
             ):
                 hass.services.async_remove(DOMAIN, service)
     return unloaded
@@ -192,6 +233,14 @@ def _async_setup_alerting(
         enabled = data.get(CONF_NOTIFICATIONS, DEFAULT_NOTIFICATIONS)
         process_stage_advances(hass, coordinator, enabled)
         process_risk_changes(hass, coordinator, enabled)
+        # Une dégradation silencieuse des modèles vaut d'être signalée
+        # au même moment que les risques : c'est le même cycle.
+        async_check_history(
+            hass,
+            entry.entry_id,
+            coordinator,
+            data.get(CONF_ENABLED_MODELS, DEFAULT_ENABLED_MODELS),
+        )
 
     entry.async_on_unload(coordinator.async_add_listener(_handle_update))
 
@@ -203,22 +252,11 @@ def _coordinators(hass: HomeAssistant) -> list[MeteoSentinelleCoordinator]:
 def _resolve_trees(coordinator, requested) -> list[str] | None:
     """Traduit un nom ou un identifiant d'arbre en identifiants de sous-entrée.
 
-    Renvoie None si rien n'est demandé (= tous les arbres).
+    Renvoie None si rien n'est demandé (= tous les arbres). La logique de
+    rapprochement vit dans `tree.match_trees`, partagée avec les intents
+    Assist : un nom dicté et un nom saisi méritent la même tolérance.
     """
-    if requested is None:
-        return None
-    names = [requested] if isinstance(requested, str) else list(requested)
-    wanted = {name.strip().casefold() for name in names if name}
-    matched: list[str] = []
-    for subentry_id, tree in coordinator.trees.items():
-        candidates = {
-            subentry_id.casefold(),
-            tree.name.casefold(),
-            tree.display_name.casefold(),
-        }
-        if candidates & wanted:
-            matched.append(subentry_id)
-    return matched
+    return match_trees(coordinator.trees, requested)
 
 
 def _async_register_services(hass: HomeAssistant) -> None:
@@ -264,6 +302,27 @@ def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_RESET_MILDEW_INDEX, _reset_mildew, schema=RESET_MILDEW_SCHEMA
     )
+    async def _set_biofix(call: ServiceCall) -> None:
+        for coordinator in _coordinators(hass):
+            await coordinator.async_set_biofix(
+                pest=call.data[ATTR_PEST],
+                when=call.data.get(ATTR_DATE),
+                subentry_ids=_resolve_trees(coordinator, call.data.get(ATTR_TREE)),
+            )
+
+    async def _clear_biofix(call: ServiceCall) -> None:
+        for coordinator in _coordinators(hass):
+            await coordinator.async_clear_biofix(
+                pest=call.data.get(ATTR_PEST),
+                subentry_ids=_resolve_trees(coordinator, call.data.get(ATTR_TREE)),
+            )
+
     hass.services.async_register(
         DOMAIN, SERVICE_SET_STAGE, _set_stage, schema=SET_STAGE_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_BIOFIX, _set_biofix, schema=SET_BIOFIX_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_CLEAR_BIOFIX, _clear_biofix, schema=CLEAR_BIOFIX_SCHEMA
     )

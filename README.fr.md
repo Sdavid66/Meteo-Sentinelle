@@ -9,9 +9,11 @@
 </p>
 
 Intégration Home Assistant, installable via **HACS**, qui prédit les
-risques de **gel** et de **maladies des plantes** (mildiou, oïdium...)
-à partir des capteurs de **votre station météo, quelle qu'elle soit**,
-combinés aux prévisions météo.
+risques de **gel**, de **maladies des plantes** (mildiou, oïdium...) et
+de **ravageurs** (carpocapse, mouche de la cerise, doryphore, tordeuse
+de la grappe) à partir des capteurs de **votre station météo, quelle
+qu'elle soit**, combinés aux prévisions météo — et vous dit quand la
+fenêtre est bonne pour traiter.
 Si vous le souhaitez, vous pouvez me donner un peu de courage en me payant un café :-). 
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20the%20project-orange?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/sdavid66)
@@ -24,9 +26,17 @@ Si vous le souhaitez, vous pouvez me donner un peu de courage en me payant un ca
 Une station météo donne des mesures brutes (température, humidité,
 pluie, humectation foliaire...). Ce plugin les transforme en **alertes
 actionnables** : « gel probable cette nuit sur le pommier en fleur »,
-« conditions favorables au mildiou depuis 2 jours », directement
-utilisables dans vos automatisations (notification, mise en route d'un
-voile d'hivernage, traitement préventif...).
+« conditions favorables au mildiou depuis 2 jours », « carpocapse :
+éclosion généralisée sur le pommier » — directement utilisables dans vos
+automatisations (notification, mise en route d'un voile d'hivernage,
+traitement préventif...).
+
+Il ne s'arrête pas au diagnostic : une **fenêtre de pulvérisation** vous
+dit quand le vent et la pluie prévus permettent réellement de traiter,
+une **carte de tableau de bord** livrée avec l'intégration donne la
+chronologie du verger d'un coup d'œil, et des **commandes vocales**
+(Assist) répondent à « est-ce que je peux traiter demain ? » directement
+à la voix.
 
 ## Quelle station météo ?
 
@@ -292,6 +302,57 @@ qui que ce soit.
 Ces réglages sont modifiables à tout moment via **Options** sur
 l'intégration ; les arbres se modifient depuis leur propre entrée.
 
+## Carte de tableau de bord
+
+Une carte est livrée **avec l'intégration** : aucun dépôt HACS
+supplémentaire, aucune ressource Lovelace à déclarer. Elle apparaît dans
+le sélecteur de cartes sous « Météo Sentinelle » dès l'installation, et
+se met à jour en même temps que le composant.
+
+Elle affiche une chronologie continue coupée par un repère
+« maintenant » : à gauche l'historique des niveaux de risque, à droite
+les fenêtres de traitement à venir et la prochaine gelée annoncée. Un
+clic sur une ligne ouvre l'entité correspondante.
+
+Les entités sont détectées automatiquement ; l'éditeur visuel permet de
+changer le titre, la profondeur d'historique et, au besoin, de fixer une
+liste d'entités.
+
+## Commandes vocales (Assist)
+
+Trois questions sont comprises, en français comme en anglais :
+
+- « Quels sont les risques au verger ? »
+- « Est-ce que je peux traiter demain ? »
+- « Où en est le pommier Golden ? »
+
+Les phrases sont recopiées automatiquement dans
+`custom_sentences/{fr,en}/meteo_sentinelle.yaml`. Vous pouvez les
+modifier : dès qu'un fichier diffère de la version livrée, l'intégration
+n'y touche plus. Pour revenir à l'original, supprimez-le. L'installation
+se désactive dans les options du site.
+
+Si votre agent Assist s'appuie sur un modèle de langage, les mêmes
+questions fonctionnent sans ces phrases : les gestionnaires d'intent
+sont exposés comme outils à l'agent.
+
+## Diagnostic : quand un modèle ne peut pas tourner
+
+Le mode de défaillance le plus dangereux de ce plugin est silencieux.
+Sans historique horaire suffisant, les modèles maladie ne trouvent
+aucune journée évaluable et annoncent « aucun risque » — ce qui est
+indiscernable d'une vraie absence de risque.
+
+Une **réparation** apparaît donc dans Paramètres → Système →
+Réparations quand la couverture est insuffisante, et se referme
+d'elle-même dès qu'elle redevient correcte. Deux cas sont distingués :
+recorder injoignable, ou recorder présent mais trop peu d'heures
+exploitables — sachant que le facteur limitant est toujours la mesure la
+moins bien couverte.
+
+Le capteur « Source des données » porte le détail en attributs, et le
+capteur de degrés-jours expose `complete_season`.
+
 ## Modèles de risque
 
 Tous les modèles travaillent sur des **séries horaires** reconstruites
@@ -355,6 +416,75 @@ Le Gubler-Thomas d'origine ne modélise pas la pluie ; on applique donc
 une pénalité de −10 points au-delà de 2,5 mm journaliers, en reprenant
 la règle du modèle « Hop Powdery Mildew » (variante Cascade), lui-même
 dérivé de Gubler-Thomas. Désactivable dans les options.
+
+### Ravageurs — degrés-jours et biofix
+
+Quatre ravageurs sont suivis par cumul thermique, chacun restreint aux
+espèces où il a un sens agronomique :
+
+| Ravageur | Espèces | Barème | Origine du cumul |
+|---|---|---|---|
+| Carpocapse | pommier, poirier | base 10 °C, plafond 31,1 °C | biofix |
+| Mouche de la cerise | cerisier | base 5 °C | 1er janvier |
+| Doryphore | pomme de terre | base 10 °C | biofix |
+| Tordeuse de la grappe | vigne | base 7 °C | 1er janvier |
+
+Le capteur donne un niveau de risque comme les autres modèles, et
+expose en attributs le jalon atteint (`cycle_stage`), le cumul, et ce
+qui reste avant le jalon suivant. Le niveau traduit l'**urgence
+d'agir**, pas la gravité des dégâts : le stade où l'insecte est le plus
+vulnérable porte le niveau le plus élevé, et il retombe une fois la
+fenêtre passée.
+
+**Le biofix.** Pour le carpocapse et le doryphore, le cumul n'a de sens
+qu'à partir d'un événement observé — première capture soutenue au piège
+à phéromone, premières pontes. Déclarez-le :
+
+```yaml
+action: meteo_sentinelle.set_biofix
+data:
+  pest: codling_moth
+  tree: Pommier Golden du fond   # omis = tous les arbres concernés
+  date: "2026-05-04"             # omis = aujourd'hui
+```
+
+Sans déclaration, deux comportements distincts :
+
+- le **carpocapse** pose un biofix approché à la pleine floraison, avec
+  laquelle le premier vol coïncide en gros. L'attribut
+  `biofix_estimated` le signale, et votre déclaration l'écrase
+  définitivement ;
+- le **doryphore** n'a pas d'ancrage phénologique équivalent : son
+  capteur annonce `awaiting_biofix` plutôt qu'un niveau calculé sur une
+  origine arbitraire.
+
+⚠️ **Un cumul saisonnier démarré en cours d'année sous-estime.** Une
+intégration installée en avril n'a pas les degrés-jours de février et
+mars : la mouche de la cerise et la tordeuse annoncent alors le cycle en
+retard. L'attribut `incomplete_season` le dit, et la saison suivante,
+partie du 1er janvier, est correcte.
+
+⚠️ **Ces modèles situent le ravageur dans son cycle, pas sa
+population.** Ils disent quand la cible est vulnérable, jamais combien
+d'individus sont présents. Un piège ou un coup d'œil sur l'arbre reste
+indispensable avant de traiter.
+
+### Fenêtre de pulvérisation
+
+Un capteur de site cherche dans les prévisions horaires les créneaux où
+pulvériser a un sens :
+
+- **vent ≤ 19 km/h** — degré 3 Beaufort, seuil retenu par la
+  réglementation française pour l'application de produits
+  phytopharmaceutiques (arrêté du 4 mai 2017). Vérifiez la règle
+  applicable chez vous ;
+- **pas de pluie** pendant le délai de résistance au lavage ;
+- **température entre 5 et 25 °C** — ordres de grandeur horticoles.
+
+L'état du capteur est l'heure de début du prochain créneau, directement
+utilisable dans une automatisation. Une donnée manquante n'est jamais
+lue comme favorable : sans prévision de vent, aucun créneau n'est
+proposé, et l'attribut `blocking` dit pourquoi.
 
 ### Suivi des traitements — « protégé jusqu'à »
 
@@ -420,10 +550,15 @@ en deçà d'un outil professionnel sur trois points :
 - v0.7 : blueprint de protection contre le gel, prêt à l'emploi.
 - v0.8 : documentation anglaise par défaut, blueprints bilingues,
   notifications traduites.
-- **v1.0 (actuelle)** : première version stable — les fonctionnalités,
-  les noms d'entités et le contenu des événements sont désormais
-  considérés comme figés, et l'intégration est disponible dans le
-  magasin HACS par défaut.
+- v1.0 : première version stable — les fonctionnalités, les noms
+  d'entités et le contenu des événements sont désormais considérés comme
+  figés, et l'intégration est disponible dans le magasin HACS par
+  défaut.
+- **v1.1 (actuelle)** : quatre ravageurs par degrés-jours (carpocapse,
+  mouche de la cerise, doryphore, tordeuse de la grappe) avec biofix
+  déclarable ; fenêtres de pulvérisation ; carte de tableau de bord
+  livrée avec l'intégration ; commandes vocales Assist ; réparation
+  quand l'historique manque.
 - Ensuite : tavelure du pommier (table de Mills), cohortes d'infection
   avec latence pour le mildiou, sensibilité variétale, apprentissage du
   décalage de degrés-jours sur les corrections manuelles.

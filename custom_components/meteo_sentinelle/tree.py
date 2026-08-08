@@ -17,6 +17,7 @@ from .const import (
     CONF_STAGE,
     CONF_TREE_NAME,
     CROP_DISEASE_MODELS,
+    CROP_PEST_MODELS,
     DEFAULT_AUTO_ADVANCE,
     DEFAULT_GDD_OFFSET,
     MODEL_FROST,
@@ -45,6 +46,11 @@ class Tree:
     mildew_last_day: str | None = None
     #: Dernier niveau connu par modèle, pour ne notifier qu'aux changements.
     last_levels: dict[str, str] = field(default_factory=dict)
+    #: Biofix par ravageur : {modèle: {"date", "gdd", "estimated"}}.
+    #: `gdd` mémorise le cumul saisonnier au moment du biofix, ce qui
+    #: permet d'en déduire le cumul depuis le biofix par simple
+    #: soustraction, sans jamais relire l'historique.
+    biofix: dict[str, dict] = field(default_factory=dict)
 
     @classmethod
     def from_subentry(cls, subentry_id: str, data: dict) -> "Tree":
@@ -72,6 +78,7 @@ class Tree:
             "mildew_started": self.mildew_started,
             "mildew_last_day": self.mildew_last_day,
             "last_levels": dict(self.last_levels),
+            "biofix": {key: dict(value) for key, value in self.biofix.items()},
         }
 
     def restore_state(self, data: dict) -> None:
@@ -88,6 +95,11 @@ class Tree:
         self.mildew_started = bool(data.get("mildew_started", False))
         self.mildew_last_day = data.get("mildew_last_day")
         self.last_levels = dict(data.get("last_levels") or {})
+        self.biofix = {
+            key: dict(value)
+            for key, value in (data.get("biofix") or {}).items()
+            if isinstance(value, dict)
+        }
 
     # --- Présentation ---
 
@@ -115,8 +127,17 @@ class Tree:
 
     @property
     def models(self) -> list[str]:
-        """Modèles pertinents : le gel, plus les maladies de l'espèce."""
-        return [MODEL_FROST] + list(CROP_DISEASE_MODELS.get(self.crop, []))
+        """Modèles pertinents : le gel, les maladies et les ravageurs de l'espèce."""
+        return (
+            [MODEL_FROST]
+            + list(CROP_DISEASE_MODELS.get(self.crop, []))
+            + list(CROP_PEST_MODELS.get(self.crop, []))
+        )
+
+    @property
+    def pests(self) -> list[str]:
+        """Ravageurs suivis pour cette espèce."""
+        return list(CROP_PEST_MODELS.get(self.crop, []))
 
     def slug(self) -> str:
         return self.subentry_id
@@ -151,6 +172,46 @@ def strip_legacy_keys(entry_data: dict) -> dict:
         for key, value in entry_data.items()
         if key not in (CONF_CROP, CONF_STAGE)
     }
+
+
+def match_trees(trees: dict[str, "Tree"], requested) -> list[str] | None:
+    """Traduit un nom ou un identifiant d'arbre en identifiants de sous-entrée.
+
+    Renvoie None si rien n'est demandé (= tous les arbres). Le rapprochement
+    est volontairement tolérant : le nom saisi dans un service ou dicté à
+    Assist correspond rarement au caractère près à celui de l'appareil.
+    Trois formes sont acceptées — l'identifiant technique, le nom donné
+    par l'utilisateur (« Golden »), et le nom affiché (« Pommier
+    Golden ») — puis, à défaut, une correspondance par inclusion.
+    """
+    if requested is None:
+        return None
+    names = [requested] if isinstance(requested, str) else list(requested)
+    wanted = {name.strip().casefold() for name in names if name}
+    wanted.discard("")
+    if not wanted:
+        return None
+
+    matched: list[str] = []
+    for subentry_id, tree in trees.items():
+        candidates = {
+            subentry_id.casefold(),
+            tree.name.casefold(),
+            tree.display_name.casefold(),
+        }
+        if candidates & wanted:
+            matched.append(subentry_id)
+
+    if matched:
+        return matched
+
+    # Repli par inclusion : « le pommier » doit retrouver « Pommier
+    # Golden du fond » sans que l'utilisateur ait à le nommer en entier.
+    for subentry_id, tree in trees.items():
+        haystack = f"{tree.display_name} {tree.name}".casefold()
+        if any(word and (word in haystack or haystack in word) for word in wanted):
+            matched.append(subentry_id)
+    return matched
 
 
 def crop_label(crop: str) -> str:

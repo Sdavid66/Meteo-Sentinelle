@@ -1,3 +1,8 @@
+# Les libellés des listes déroulantes ne sont pas écrits ici : le
+# « translation_key » les fait résoudre dans la section « selector » de
+# strings.json, donc dans la langue de l'utilisateur. Un libellé écrit
+# en dur figerait l'interface en français.
+
 log_treatment:
   name: Enregistrer un traitement
   description: >-
@@ -7,22 +12,25 @@ log_treatment:
     l'étiquette du produit.
   fields:
     target:
-      name: Maladie visée
-      description: Modèle de risque concerné par le traitement.
+      name: Cible
+      description: Maladie ou ravageur visé par le traitement.
       required: true
       selector:
         select:
+          translation_key: treatable_model
           options:
-            - label: Mildiou
-              value: late_blight
-            - label: Oïdium
-              value: powdery_mildew
+            - late_blight
+            - powdery_mildew
+            - codling_moth
+            - cherry_fruit_fly
+            - colorado_potato_beetle
+            - grapevine_moth
     tree:
       name: Arbre(s)
       description: >-
         Nom du ou des arbres traités, tel qu'affiché dans Home Assistant
         (ex. « Pommier Golden »). Laisser vide pour appliquer à tous les
-        arbres concernés par cette maladie.
+        arbres concernés par cette cible.
       example: Pommier Golden
       selector:
         object:
@@ -62,15 +70,18 @@ clear_treatment:
   description: Supprime le traitement enregistré.
   fields:
     target:
-      name: Maladie visée
-      description: Laisser vide pour effacer toutes les maladies.
+      name: Cible
+      description: Laisser vide pour effacer toutes les cibles.
       selector:
         select:
+          translation_key: treatable_model
           options:
-            - label: Mildiou
-              value: late_blight
-            - label: Oïdium
-              value: powdery_mildew
+            - late_blight
+            - powdery_mildew
+            - codling_moth
+            - cherry_fruit_fly
+            - colorado_potato_beetle
+            - grapevine_moth
     tree:
       name: Arbre(s)
       description: Laisser vide pour effacer sur tous les arbres.
@@ -112,3 +123,63 @@ set_stage:
       example: full_bloom
       selector:
         text:
+
+set_biofix:
+  name: Déclarer un biofix
+  description: >-
+    Donne son origine au cumul de degrés-jours d'un ravageur : première
+    capture soutenue au piège à phéromone pour le carpocapse, premières
+    pontes observées pour le doryphore. Votre observation fait autorité
+    et remplace le biofix estimé à partir du stade phénologique.
+  fields:
+    pest:
+      name: Ravageur
+      description: Modèle dont on déclare l'origine du cumul.
+      required: true
+      selector:
+        select:
+          translation_key: pest
+          options:
+            - codling_moth
+            - cherry_fruit_fly
+            - colorado_potato_beetle
+            - grapevine_moth
+    tree:
+      name: Arbre(s)
+      description: >-
+        Laisser vide pour appliquer à tous les arbres concernés par ce
+        ravageur.
+      example: Pommier Golden
+      selector:
+        object:
+    date:
+      name: Date
+      description: >-
+        Jour de l'observation. Par défaut aujourd'hui. Une date
+        antérieure au début de l'historique connu ne peut pas être
+        reconstituée : le cumul repart alors du début de la série.
+      selector:
+        date:
+
+clear_biofix:
+  name: Effacer un biofix
+  description: >-
+    Retire l'origine du cumul : le modèle se remet en attente d'une
+    observation. Utile en début de saison.
+  fields:
+    pest:
+      name: Ravageur
+      description: Laisser vide pour effacer tous les ravageurs.
+      selector:
+        select:
+          translation_key: pest
+          options:
+            - codling_moth
+            - cherry_fruit_fly
+            - colorado_potato_beetle
+            - grapevine_moth
+    tree:
+      name: Arbre(s)
+      description: Laisser vide pour effacer sur tous les arbres.
+      selector:
+        object:

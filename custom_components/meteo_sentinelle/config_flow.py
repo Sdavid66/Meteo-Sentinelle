@@ -16,6 +16,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     AVAILABLE_MODELS,
+    CONF_ASSIST_SENTENCES,
     CONF_AUTO_ADVANCE,
     CONF_CROP,
     CONF_ENABLED_MODELS,
@@ -34,6 +35,7 @@ from .const import (
     CONF_TREE_NAME,
     CONF_WEATHER_ENTITY,
     CONF_WIND_ENTITY,
+    DEFAULT_ASSIST_SENTENCES,
     DEFAULT_AUTO_ADVANCE,
     DEFAULT_ENABLED_MODELS,
     DEFAULT_GDD_OFFSET,
@@ -107,6 +109,16 @@ def _site_schema(defaults: dict | None = None) -> dict:
         vol.Required(
             CONF_NOTIFICATIONS,
             default=defaults.get(CONF_NOTIFICATIONS, DEFAULT_NOTIFICATIONS),
+        )
+    ] = selector.BooleanSelector()
+
+    # Les phrases Assist s'installent dans le dossier de configuration :
+    # écrire chez l'utilisateur mérite une case à cocher visible plutôt
+    # qu'un effet de bord silencieux.
+    schema[
+        vol.Required(
+            CONF_ASSIST_SENTENCES,
+            default=defaults.get(CONF_ASSIST_SENTENCES, DEFAULT_ASSIST_SENTENCES),
         )
     ] = selector.BooleanSelector()
 

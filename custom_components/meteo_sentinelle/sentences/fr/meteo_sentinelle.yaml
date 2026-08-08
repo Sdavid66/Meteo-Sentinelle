@@ -1,0 +1,105 @@
+# Phrases Assist de Météo Sentinelle (français).
+#
+# Ce fichier est recopié automatiquement dans custom_sentences/fr/ par
+# l'intégration. Vous pouvez le modifier librement : dès qu'il diffère
+# de la version d'origine, Météo Sentinelle cesse de le réécrire.
+# Pour revenir à la version d'origine, supprimez-le simplement.
+#
+# Après modification : Outils de développement → Actions →
+# « conversation.reload ».
+language: "fr"
+
+intents:
+  MeteoSentinelleRisk:
+    data:
+      # Le risque du verger entier.
+      - sentences:
+          - "(quel est le|quels sont les) risque[s] [au|du] (verger|jardin|potager)"
+          - "y a-t-il un risque [au|dans le] (verger|jardin|potager)"
+          - "est-ce qu'il y a un risque [au|dans le] (verger|jardin|potager)"
+          - "qu'est-ce que je dois surveiller [au|dans le] (verger|jardin|potager)"
+
+      # Le risque d'un arbre donné.
+      - sentences:
+          - "(quel est le|quels sont les) risque[s] (sur|pour|de) {tree}"
+          - "y a-t-il un risque (sur|pour) {tree}"
+        slots:
+          tree: "{tree}"
+
+      # Un risque précis, éventuellement sur un arbre précis.
+      - sentences:
+          - "(quel est le|y a-t-il un) risque (de|d') {model}"
+        slots:
+          model: "{model}"
+      - sentences:
+          - "(quel est le|y a-t-il un) risque (de|d') {model} (sur|pour) {tree}"
+        slots:
+          model: "{model}"
+          tree: "{tree}"
+
+  MeteoSentinelleTreatmentWindow:
+    data:
+      - sentences:
+          - "(est-ce que je peux|puis-je|je peux) (traiter|pulvériser)"
+          - "(est-ce que c'est|c'est) le moment de (traiter|pulvériser)"
+          - "quand (est-ce que je peux|puis-je) (traiter|pulvériser)"
+          - "quelle est la prochaine fenêtre de (traitement|pulvérisation)"
+
+      - sentences:
+          - "(est-ce que je peux|puis-je|je peux) (traiter|pulvériser) {day}"
+          - "(est-ce que c'est|c'est) le moment de (traiter|pulvériser) {day}"
+        slots:
+          day: "{day}"
+
+  MeteoSentinelleStage:
+    data:
+      - sentences:
+          - "où en (est|sont) (le|la|les) (verger|jardin|arbres)"
+          - "quel est le stade [phénologique] (au|du) (verger|jardin)"
+
+      - sentences:
+          - "où en est {tree}"
+          - "quel est le stade [phénologique] (de|du|de la|des) {tree}"
+          - "à quel stade est {tree}"
+        slots:
+          tree: "{tree}"
+
+lists:
+  # Le nom de l'arbre est libre : il est comparé de façon tolérante au
+  # nom de l'appareil (« Golden » retrouve « Pommier Golden du fond »).
+  tree:
+    wildcard: true
+
+  day:
+    values:
+      - in: "aujourd'hui"
+        out: "today"
+      - in: "maintenant"
+        out: "today"
+      - in: "demain"
+        out: "tomorrow"
+
+  model:
+    values:
+      - in: "gel"
+        out: "frost"
+      - in: "gelée"
+        out: "frost"
+      - in: "mildiou"
+        out: "late_blight"
+      - in: "oïdium"
+        out: "powdery_mildew"
+      - in: "oidium"
+        out: "powdery_mildew"
+      - in: "carpocapse"
+        out: "codling_moth"
+      - in: "ver de la pomme"
+        out: "codling_moth"
+      - in: "mouche de la cerise"
+        out: "cherry_fruit_fly"
+      - in: "doryphore"
+        out: "colorado_potato_beetle"
+      - in: "tordeuse [de la grappe]"
+        out: "grapevine_moth"
+      - in: "eudémis"
+        out: "grapevine_moth"

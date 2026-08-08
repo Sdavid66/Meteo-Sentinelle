@@ -36,13 +36,16 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
     SUBENTRY_TYPE_TREE,
+    TREATABLE_MODELS,
 )
+from .models import pests as pest_models
 from .models import phenology
 from .models.frost import evaluate_frost_risk
 from .models.hourly import HourlySample, complete_days, resample_hourly
 from .models.late_blight import evaluate_late_blight_risk
 from .models.phenology import GddState
 from .models.powdery_mildew import evaluate_powdery_mildew_risk
+from .models.spray import ForecastHour, SprayAdvice, find_spray_windows
 from .models.treatments import Treatment, adjusted_level, protection_state
 from .tree import Tree
 
@@ -64,8 +67,17 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         self.treatments: dict[tuple[str, str], Treatment] = {}
         self.protection: dict[str, dict[str, dict]] = {}
         self.gdd = GddState(season_year=dt_util.now().year)
+        #: Cumuls thermiques des ravageurs, indexés par barème
+        #: (base, plafond) : deux ravageurs de même barème partagent la
+        #: même série plutôt que de la recalculer chacun de leur côté.
+        self.pest_gdd: dict[str, GddState] = {}
         #: Avancements de stade appliqués au dernier cycle, à notifier.
         self.pending_advances: list[dict] = []
+        #: Couverture réelle de l'historique horaire, pour le diagnostic.
+        self.history_coverage: dict = {}
+        #: Créneaux de pulvérisation trouvés dans les prévisions.
+        self.spray: SprayAdvice = SprayAdvice()
+        self._recorder_available = True
         self._last_rain_check: datetime | None = None
         self._store: Store = Store(
             hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}"
@@ -99,6 +111,10 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                     tree.mildew_index = 0
                     tree.mildew_started = False
                     tree.mildew_last_day = None
+                    # Un biofix de carpocapse n'a aucun sens sur un
+                    # cerisier : on repart de zéro plutôt que de traîner
+                    # une origine de cumul héritée d'une autre espèce.
+                    tree.biofix = {}
             self.trees[subentry.subentry_id] = tree
 
     def tree(self, subentry_id: str) -> Tree | None:
@@ -116,8 +132,21 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             season_year=int(gdd.get("season_year", dt_util.now().year)),
             total=float(gdd.get("total", 0.0)),
             last_day=gdd.get("last_day"),
+            first_day=gdd.get("first_day"),
             recent=list(gdd.get("recent") or []),
         )
+
+        self.pest_gdd = {
+            key: GddState(
+                season_year=int(data.get("season_year", dt_util.now().year)),
+                total=float(data.get("total", 0.0)),
+                last_day=data.get("last_day"),
+                first_day=data.get("first_day"),
+                recent=list(data.get("recent") or []),
+            )
+            for key, data in (stored.get("pest_gdd") or {}).items()
+            if isinstance(data, dict)
+        }
 
         self.load_trees()
         for subentry_id, data in (stored.get("trees") or {}).items():
@@ -147,7 +176,20 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                     "season_year": self.gdd.season_year,
                     "total": self.gdd.total,
                     "last_day": self.gdd.last_day,
+                    "first_day": self.gdd.first_day,
                     "recent": self.gdd.recent,
+                },
+                "pest_gdd": {
+                    key: {
+                        "season_year": state.season_year,
+                        "total": state.total,
+                        "last_day": state.last_day,
+                        "first_day": state.first_day,
+                        # Le détail journalier n'a d'intérêt que pour le
+                        # cumul phénologique, affiché à l'utilisateur.
+                        "recent": [],
+                    }
+                    for key, state in self.pest_gdd.items()
                 },
                 "trees": {
                     subentry_id: tree.state_dict()
@@ -177,6 +219,62 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         tree.stage_changed_at = dt_util.utcnow()
         if stage in phenology.BLOOM_STAGES and tree.bloom_date is None:
             tree.bloom_date = dt_util.utcnow()
+        await self.async_save_state()
+        await self.async_request_refresh()
+
+    async def async_set_biofix(
+        self,
+        pest: str,
+        when: date | None = None,
+        subentry_ids: list[str] | None = None,
+    ) -> None:
+        """Déclare l'événement qui donne son origine au cumul d'un ravageur.
+
+        Première capture au piège à phéromone pour le carpocapse,
+        premières pontes pour le doryphore. C'est l'observation de
+        l'utilisateur, elle fait donc autorité sur le biofix estimé à
+        partir du stade phénologique.
+
+        Le cumul depuis le biofix se déduit ensuite par soustraction du
+        cumul saisonnier. Un biofix daté d'avant le début de la série
+        connue ne peut pas être reconstitué : on le rattache alors au
+        début de la série, avec l'écart que cela implique — c'est plus
+        honnête que de refuser silencieusement la déclaration.
+        """
+        definition = pest_models.PESTS.get(pest)
+        if definition is None:
+            return
+
+        state = self.pest_gdd.get(pest_models.accumulator_key(definition))
+        reference = state.total if state is not None else 0.0
+        day = when or dt_util.now().date()
+
+        ids = subentry_ids if subentry_ids is not None else list(self.trees)
+        for subentry_id in ids:
+            tree = self.trees.get(subentry_id)
+            if tree is None or pest not in tree.pests:
+                continue
+            tree.biofix[pest] = {
+                "date": day.isoformat(),
+                "gdd": round(reference, 1),
+                "estimated": False,
+            }
+        await self.async_save_state()
+        await self.async_request_refresh()
+
+    async def async_clear_biofix(
+        self, pest: str | None = None, subentry_ids: list[str] | None = None
+    ) -> None:
+        """Efface un biofix : le modèle revient en attente d'observation."""
+        ids = subentry_ids if subentry_ids is not None else list(self.trees)
+        for subentry_id in ids:
+            tree = self.trees.get(subentry_id)
+            if tree is None:
+                continue
+            if pest is None:
+                tree.biofix = {}
+            else:
+                tree.biofix.pop(pest, None)
         await self.async_save_state()
         await self.async_request_refresh()
 
@@ -289,7 +387,13 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
 
     async def _async_get_forecast(
         self, weather_entity: str | None
-    ) -> list[tuple[datetime, float]]:
+    ) -> list[ForecastHour]:
+        """Prévisions horaires, réduites aux grandeurs que les modèles utilisent.
+
+        La même requête sert au gel (température) et aux fenêtres de
+        pulvérisation (vent, pluie) : les extraire ensemble évite un
+        second appel pour les mêmes données.
+        """
         if not weather_entity:
             return []
         try:
@@ -305,11 +409,10 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             return []
 
         forecasts = (response or {}).get(weather_entity, {}).get("forecast", [])
-        result: list[tuple[datetime, float]] = []
+        result: list[ForecastHour] = []
         for item in forecasts:
             when = item.get("datetime")
-            temp = item.get("temperature")
-            if when is None or temp is None:
+            if when is None:
                 continue
             if isinstance(when, datetime):
                 when_dt = when
@@ -318,7 +421,20 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                     when_dt = datetime.fromisoformat(when)
                 except (TypeError, ValueError):
                     continue
-            result.append((when_dt, temp))
+            # Le capteur de fenêtre de traitement porte un device_class
+            # « timestamp », qui exige un fuseau. Les prévisions en
+            # fournissent un, mais un filet de sécurité coûte moins cher
+            # qu'une entité en erreur.
+            if when_dt.tzinfo is None:
+                when_dt = when_dt.replace(tzinfo=dt_util.UTC)
+            result.append(
+                ForecastHour(
+                    time=when_dt,
+                    temperature=item.get("temperature"),
+                    wind_speed=item.get("wind_speed"),
+                    precipitation=item.get("precipitation"),
+                )
+            )
         return result
 
     async def _async_get_hourly(
@@ -346,7 +462,10 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             raw = await get_instance(self.hass).async_add_executor_job(_fetch)
         except Exception as err:  # noqa: BLE001 - l'historique est optionnel
             _LOGGER.debug("Historique indisponible : %s", err)
+            self._recorder_available = False
             return []
+
+        self._recorder_available = True
 
         def _numeric(state: State) -> float | None:
             try:
@@ -376,19 +495,147 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         return resample_hourly(records)
 
     # ------------------------------------------------------------------
+    # Diagnostic de l'historique
+    # ------------------------------------------------------------------
+
+    def _update_history_coverage(self, recent: list[HourlySample]) -> None:
+        """Mesure ce que le recorder a réellement fourni.
+
+        Les modèles maladie exigent des séries horaires continues sur
+        plusieurs jours. Si les capteurs sont exclus du recorder, ou si
+        l'instance vient d'être installée, ces modèles ne trouvent rien
+        et renvoient « aucun risque » — un faux négatif indiscernable
+        d'une vraie absence de risque. Cette mesure permet de le dire
+        plutôt que de le laisser passer.
+        """
+        temp_hours = sum(1 for sample in recent if sample.temp is not None)
+        humidity_hours = sum(1 for sample in recent if sample.humidity is not None)
+
+        self.history_coverage = {
+            "window_hours": HISTORY_HOURS,
+            "hours": len(recent),
+            "temperature_hours": temp_hours,
+            "humidity_hours": humidity_hours,
+            # Le facteur limitant est la mesure la moins bien couverte :
+            # un critère « 6 h continues à HR ≥ 90 % » ne vaut rien si
+            # l'humidité manque, même avec une température complète.
+            "usable_hours": min(temp_hours, humidity_hours),
+            "recorder_available": self._recorder_available,
+        }
+
+    # ------------------------------------------------------------------
     # Degrés-jours et phénologie
     # ------------------------------------------------------------------
 
     def _update_gdd(self, hourly: list[HourlySample]) -> None:
-        """Cumule les degrés-jours des journées complètes disponibles."""
+        """Cumule les degrés-jours des journées complètes disponibles.
+
+        Une seule lecture des journées alimente tous les barèmes : celui
+        de la phénologie (base 5,6 °C) et ceux des ravageurs. Chaque
+        cumulateur reste idempotent de son côté, donc un barème ajouté
+        en cours de saison démarre simplement plus tard, sans fausser
+        les autres.
+        """
         days: list[tuple[date, float | None, float | None]] = []
         for day, samples in complete_days(hourly):
             temps = [s.temp for s in samples if s.temp is not None]
             if not temps:
                 continue
             days.append((day, min(temps), max(temps)))
-        if days:
-            self.gdd = phenology.accumulate(self.gdd, days)
+        if not days:
+            return
+
+        self.gdd = phenology.accumulate(self.gdd, days)
+
+        for key, (base, upper) in pest_models.required_accumulators().items():
+            state = self.pest_gdd.get(key) or GddState(season_year=days[0][0].year)
+            self.pest_gdd[key] = phenology.accumulate(state, days, base, upper)
+
+    def _pest_total(self, pest: str) -> float | None:
+        """Cumul saisonnier courant pour le barème d'un ravageur."""
+        definition = pest_models.PESTS.get(pest)
+        if definition is None:
+            return None
+        state = self.pest_gdd.get(pest_models.accumulator_key(definition))
+        return state.total if state is not None else None
+
+    def _auto_biofix(self, tree: Tree, now: datetime) -> None:
+        """Pose un biofix approché à partir du stade phénologique.
+
+        Certains modèles n'ont de sens qu'à partir d'un événement
+        observé. Exiger un piège à phéromone pour que le capteur affiche
+        quelque chose rendrait la fonction inutilisable pour la plupart
+        des jardiniers ; inventer une origine sans le dire serait pire.
+
+        Compromis retenu : quand un stade d'ancrage est documenté (le
+        premier vol du carpocapse coïncide en gros avec la floraison),
+        le biofix est posé automatiquement et **marqué comme estimé**.
+        Une déclaration manuelle l'écrase et n'est jamais réécrasée,
+        exactement comme une correction de stade.
+        """
+        for pest in tree.pests:
+            definition = pest_models.PESTS.get(pest)
+            if definition is None or not definition.needs_biofix:
+                continue
+            if definition.biofix_anchor is None:
+                continue
+            existing = tree.biofix.get(pest)
+            if existing is not None:
+                continue
+            stages = phenology.ordered_stages(tree.crop)
+            anchor = definition.biofix_anchor
+            if tree.stage is None or anchor not in stages:
+                continue
+            if tree.stage not in stages:
+                continue
+            if stages.index(tree.stage) < stages.index(anchor):
+                continue
+
+            total = self._pest_total(pest)
+            tree.biofix[pest] = {
+                "date": now.date().isoformat(),
+                "gdd": round(total or 0.0, 1),
+                "estimated": True,
+            }
+            _LOGGER.debug(
+                "Biofix %s estimé pour « %s » au stade %s",
+                pest,
+                tree.display_name,
+                tree.stage,
+            )
+
+    def _evaluate_pests(self, tree: Tree, enabled: list[str]) -> dict[str, object]:
+        """Évalue les ravageurs pertinents pour un arbre."""
+        results: dict[str, object] = {}
+        for pest in tree.pests:
+            if pest not in enabled:
+                continue
+            definition = pest_models.PESTS.get(pest)
+            if definition is None:
+                continue
+
+            total = self._pest_total(pest)
+            biofix = tree.biofix.get(pest)
+
+            if definition.origin == pest_models.ORIGIN_BIOFIX:
+                if biofix is None:
+                    since = None
+                else:
+                    since = max(0.0, (total or 0.0) - float(biofix.get("gdd", 0.0)))
+            else:
+                since = total
+
+            state = self.pest_gdd.get(pest_models.accumulator_key(definition))
+            risk = pest_models.evaluate_pest_risk(
+                pest,
+                since,
+                biofix_date=(biofix or {}).get("date"),
+                biofix_estimated=bool((biofix or {}).get("estimated")),
+                complete_season=bool(state and state.complete_season),
+            )
+            if risk is not None:
+                results[pest] = risk
+        return results
 
     def _advance_stages(self, now: datetime) -> None:
         """Applique l'avancement automatique des stades.
@@ -448,6 +695,15 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         weather_entity = entry_data.get(CONF_WEATHER_ENTITY)
         forecast = await self._async_get_forecast(weather_entity)
 
+        # Le modèle de gel ne demande que (heure, température) ; les
+        # fenêtres de pulvérisation exploitent la prévision complète.
+        temperatures = [
+            (hour.time, hour.temperature)
+            for hour in forecast
+            if hour.temperature is not None
+        ]
+        self.spray = find_spray_windows(forecast, now=now)
+
         cloud_cover = None
         weather_state = self.hass.states.get(weather_entity) if weather_entity else None
         if weather_state is not None:
@@ -464,6 +720,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         # Fenêtre courte pour les modèles maladie.
         recent_cutoff = dt_util.utcnow() - timedelta(hours=HISTORY_HOURS)
         recent = [s for s in hourly if s.time >= recent_cutoff]
+        self._update_history_coverage(recent)
 
         blight_shared = (
             evaluate_late_blight_risk(recent) if MODEL_LATE_BLIGHT in enabled else None
@@ -474,7 +731,8 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         self.protection = {}
 
         for subentry_id, tree in self.trees.items():
-            tree_results: dict[str, object] = {}
+            self._auto_biofix(tree, now)
+            tree_results: dict[str, object] = self._evaluate_pests(tree, enabled)
 
             if MODEL_FROST in enabled and MODEL_FROST in tree.models:
                 tree_results[MODEL_FROST] = evaluate_frost_risk(
@@ -482,7 +740,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                     values["humidity"],
                     values["wind_speed"],
                     cloud_cover,
-                    forecast,
+                    temperatures,
                     crop=tree.crop,
                     stage=tree.stage,
                 )
@@ -511,7 +769,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
 
             # Protection en cours : rétrograde le niveau affiché.
             tree_protection: dict[str, dict] = {}
-            for target in (MODEL_LATE_BLIGHT, MODEL_POWDERY_MILDEW):
+            for target in TREATABLE_MODELS:
                 if target not in tree_results:
                     continue
                 treatment = self.treatments.get((subentry_id, target))

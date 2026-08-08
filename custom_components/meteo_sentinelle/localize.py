@@ -44,8 +44,11 @@ async def async_preload(hass: HomeAssistant) -> None:
 class Translator:
     """Accès aux libellés traduits, dans la langue courante."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        language = hass.config.language
+    def __init__(self, hass: HomeAssistant, language: str | None = None) -> None:
+        # Une requête Assist porte sa propre langue, qui n'est pas
+        # nécessairement celle de l'interface : on répond dans la langue
+        # de la question quand elle est connue.
+        language = language or hass.config.language
         self._common = async_get_cached_translations(hass, language, "common", DOMAIN)
         self._entity = async_get_cached_translations(hass, language, "entity", DOMAIN)
 
@@ -95,6 +98,22 @@ class Translator:
         return self.state("select", "phenology_stage", stage)
 
 
+    def risk_name(self, model: str) -> str:
+        """« Risque de gel » / « Frost risk » — l'intitulé du modèle."""
+        return self.name("sensor", f"{model}_risk")
+
+    def pest_stage(self, stage: str | None) -> str:
+        """« Éclosion généralisée » / « Peak egg hatch ».
+
+        Les jalons du cycle d'un insecte ne sont l'état d'aucune entité :
+        ils vivent en attribut. Home Assistant ne les traduit donc pas
+        tout seul, et ils sont rangés à plat dans la section `common`.
+        """
+        if stage is None:
+            return ""
+        return self.text(f"pest_stage_{stage}")
+
+
 @callback
-def async_translator(hass: HomeAssistant) -> Translator:
-    return Translator(hass)
+def async_translator(hass: HomeAssistant, language: str | None = None) -> Translator:
+    return Translator(hass, language)

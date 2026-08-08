@@ -135,19 +135,59 @@ class GddState:
     total: float = 0.0
     #: Dernier jour complet déjà intégré (évite tout double comptage).
     last_day: str | None = None
+    #: Premier jour intégré de la saison. Un cumul censé partir du
+    #: 1er janvier mais commencé en avril **sous-estime** le total, et le
+    #: sous-estime silencieusement : ce champ permet de le signaler.
+    first_day: str | None = None
     #: Détail des derniers jours, pour diagnostic.
     recent: list[dict] = field(default_factory=list)
 
+    @property
+    def complete_season(self) -> bool:
+        """Le cumul couvre-t-il bien le début de la saison ?
 
-def daily_gdd(temp_min: float | None, temp_max: float | None) -> float:
-    """Degrés-jours d'une journée (méthode de la moyenne simple)."""
+        Tolérance à janvier : sous nos climats, les degrés-jours des
+        toutes premières semaines sont négligeables, et exiger le
+        1er janvier au jour près rendrait le drapeau inutilement
+        alarmiste.
+        """
+        if self.first_day is None:
+            return False
+        return self.first_day <= f"{self.season_year}-01-31"
+
+
+def daily_gdd(
+    temp_min: float | None,
+    temp_max: float | None,
+    base: float = GDD_BASE_C,
+    upper: float | None = None,
+) -> float:
+    """Degrés-jours d'une journée (méthode de la moyenne simple).
+
+    `base` et `upper` sont paramétrables car tous les modèles thermiques
+    ne partagent pas le même barème : la phénologie des arbres fruitiers
+    travaille en base 5,6 °C sans plafond, le carpocapse en base 10 °C
+    avec un plafond à 31,1 °C, la mouche de la cerise en base 5 °C.
+
+    Le plafond est appliqué en *horizontal cutoff* : les températures
+    sont écrêtées **avant** la moyenne, ce qui traduit le fait qu'au-delà
+    d'un certain seuil le développement cesse d'accélérer. Écrêter aussi
+    la minimale évite qu'une journée entièrement au-dessus du plafond ne
+    produise un cumul aberrant.
+    """
     if temp_min is None or temp_max is None:
         return 0.0
-    return max(0.0, (temp_max + temp_min) / 2.0 - GDD_BASE_C)
+    if upper is not None:
+        temp_max = min(temp_max, upper)
+        temp_min = min(temp_min, upper)
+    return max(0.0, (temp_max + temp_min) / 2.0 - base)
 
 
 def accumulate(
-    state: GddState, days: list[tuple[date, float | None, float | None]]
+    state: GddState,
+    days: list[tuple[date, float | None, float | None]],
+    base: float = GDD_BASE_C,
+    upper: float | None = None,
 ) -> GddState:
     """Ajoute les journées complètes non encore comptées.
 
@@ -157,6 +197,7 @@ def accumulate(
     recent = list(state.recent)
     total = state.total
     last_day = state.last_day
+    first_day = state.first_day
     season = state.season_year
 
     for day, tmin, tmax in days:
@@ -165,15 +206,18 @@ def accumulate(
             season = day.year
             total = 0.0
             last_day = None
+            first_day = None
             recent = []
 
         day_str = day.isoformat()
         if last_day is not None and day_str <= last_day:
             continue
 
-        value = daily_gdd(tmin, tmax)
+        value = daily_gdd(tmin, tmax, base, upper)
         total += value
         last_day = day_str
+        if first_day is None:
+            first_day = day_str
         recent.append(
             {"date": day_str, "gdd": round(value, 1), "total": round(total, 1)}
         )
@@ -182,6 +226,7 @@ def accumulate(
         season_year=season,
         total=total,
         last_day=last_day,
+        first_day=first_day,
         recent=recent[-14:],
     )
 

@@ -14,7 +14,8 @@
           "weather_entity": "Weather entity for forecasts (e.g. MeteoSwiss)",
           "enabled_models": "Risk models to enable",
           "powdery_mildew_rain_penalty": "Powdery mildew: account for the inhibiting effect of rain",
-          "notifications": "Create notifications in Home Assistant"
+          "notifications": "Create notifications in Home Assistant",
+          "assist_sentences": "Install voice commands for Assist"
         }
       },
       "fallback": {
@@ -81,12 +82,23 @@
           "enabled_models": "Risk models to enable",
           "powdery_mildew_rain_penalty": "Powdery mildew: account for the inhibiting effect of rain",
           "notifications": "Create notifications in Home Assistant",
+          "assist_sentences": "Install voice commands for Assist",
           "fallback_temperature_entity": "Backup temperature (MeteoSwiss)",
           "fallback_humidity_entity": "Backup humidity (MeteoSwiss)",
           "fallback_wind_speed_entity": "Backup wind speed (MeteoSwiss)",
           "fallback_rain_rate_entity": "Backup rain (MeteoSwiss)"
         }
       }
+    }
+  },
+  "issues": {
+    "insufficient_history": {
+      "title": "Not enough recorded history for the disease models",
+      "description": "Over the last {window} hours, only {hours} usable hours of temperature **and** humidity were found in the recorder, where at least {required} are needed.\n\nThe disease models (Hutton, Smith, Gubler-Thomas) are defined in continuous hourly runs. With too little history they find no evaluable day and report \"no risk\" — which is indistinguishable from a genuine absence of risk, and therefore worse than no sensor at all.\n\nUsual causes: the integration was installed less than four days ago (in which case this clears by itself), the sensors are excluded from the recorder, or the recorder purge interval is too short. Frost is unaffected: it relies on forecasts, not history."
+    },
+    "no_recorder": {
+      "title": "Recorder unavailable",
+      "description": "Météo Sentinelle could not read the history. The disease models cannot run at all: they rebuild hourly series from recorded states.\n\nCheck that the `recorder` integration is enabled and that it is not excluding the sensors selected for this site. Frost keeps working, since it only needs forecasts."
     }
   },
   "entity": {
@@ -155,6 +167,42 @@
           "severe": "Severe"
         }
       },
+      "codling_moth_risk": {
+        "name": "Codling moth risk",
+        "state": {
+          "none": "None",
+          "watch": "Watch",
+          "warning": "Warning",
+          "severe": "Severe"
+        }
+      },
+      "cherry_fruit_fly_risk": {
+        "name": "Cherry fruit fly risk",
+        "state": {
+          "none": "None",
+          "watch": "Watch",
+          "warning": "Warning",
+          "severe": "Severe"
+        }
+      },
+      "colorado_potato_beetle_risk": {
+        "name": "Colorado potato beetle risk",
+        "state": {
+          "none": "None",
+          "watch": "Watch",
+          "warning": "Warning",
+          "severe": "Severe"
+        }
+      },
+      "grapevine_moth_risk": {
+        "name": "European grapevine moth risk",
+        "state": {
+          "none": "None",
+          "watch": "Watch",
+          "warning": "Warning",
+          "severe": "Severe"
+        }
+      },
       "phenology_stage": {
         "name": "Growth stage",
         "state": {
@@ -199,6 +247,21 @@
       "powdery_mildew_protection": {
         "name": "Powdery mildew protection"
       },
+      "codling_moth_protection": {
+        "name": "Codling moth protection"
+      },
+      "cherry_fruit_fly_protection": {
+        "name": "Cherry fruit fly protection"
+      },
+      "colorado_potato_beetle_protection": {
+        "name": "Colorado potato beetle protection"
+      },
+      "grapevine_moth_protection": {
+        "name": "European grapevine moth protection"
+      },
+      "spray_window": {
+        "name": "Next spray window"
+      },
       "growing_degree_days": {
         "name": "Accumulated growing degree days"
       },
@@ -224,8 +287,8 @@
       "description": "Records a spray application and works out how long the crop stays protected.",
       "fields": {
         "target": {
-          "name": "Target disease",
-          "description": "Risk model concerned."
+          "name": "Target",
+          "description": "Disease or pest concerned."
         },
         "tree": {
           "name": "Tree(s)",
@@ -250,7 +313,7 @@
       "description": "Removes the recorded treatment.",
       "fields": {
         "target": {
-          "name": "Target disease",
+          "name": "Target",
           "description": "Leave empty to clear all."
         },
         "tree": {
@@ -280,6 +343,38 @@
         "stage": {
           "name": "Stage",
           "description": "Technical stage key (e.g. full_bloom)."
+        }
+      }
+    },
+    "set_biofix": {
+      "name": "Declare a biofix",
+      "description": "Anchors the degree-day accumulation of a pest to an observed event: first sustained pheromone trap catch, or first egg masses. Your observation takes precedence over the estimated biofix.",
+      "fields": {
+        "pest": {
+          "name": "Pest",
+          "description": "Model whose accumulation origin is being declared."
+        },
+        "tree": {
+          "name": "Tree(s)",
+          "description": "Leave empty for all trees concerned by this pest."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Day of the observation. Defaults to today."
+        }
+      }
+    },
+    "clear_biofix": {
+      "name": "Clear a biofix",
+      "description": "Removes the accumulation origin; the model goes back to waiting for an observation.",
+      "fields": {
+        "pest": {
+          "name": "Pest",
+          "description": "Leave empty to clear every pest."
+        },
+        "tree": {
+          "name": "Tree(s)",
+          "description": "Leave empty for all trees."
         }
       }
     }
@@ -338,7 +433,29 @@
       "options": {
         "frost": "Frost risk (phenological thresholds)",
         "late_blight": "Late blight (Hutton + Smith)",
-        "powdery_mildew": "Powdery mildew (Gubler-Thomas index)"
+        "powdery_mildew": "Powdery mildew (Gubler-Thomas index)",
+        "codling_moth": "Codling moth (degree days, apple and pear)",
+        "cherry_fruit_fly": "Cherry fruit fly (degree days, cherry)",
+        "colorado_potato_beetle": "Colorado potato beetle (degree days, potato)",
+        "grapevine_moth": "European grapevine moth (degree days, vine)"
+      }
+    },
+    "treatable_model": {
+      "options": {
+        "late_blight": "Late blight",
+        "powdery_mildew": "Powdery mildew",
+        "codling_moth": "Codling moth",
+        "cherry_fruit_fly": "Cherry fruit fly",
+        "colorado_potato_beetle": "Colorado potato beetle",
+        "grapevine_moth": "European grapevine moth"
+      }
+    },
+    "pest": {
+      "options": {
+        "codling_moth": "Codling moth",
+        "cherry_fruit_fly": "Cherry fruit fly",
+        "colorado_potato_beetle": "Colorado potato beetle",
+        "grapevine_moth": "European grapevine moth"
       }
     }
   },
@@ -359,6 +476,47 @@
     "detail_blight_one_day": "one favourable day",
     "detail_blight_wet_hours": "{hours} h of continuous humidity yesterday",
     "detail_mildew_index": "index {index}/100",
-    "detail_mildew_interval": "recommended spray interval {days} days"
+    "detail_mildew_interval": "recommended spray interval {days} days",
+    "notify_pest_caveat": "Degree-day models place the pest in its cycle; they say nothing about how many individuals are present. Confirm with a trap or by looking at the tree before treating.",
+    "detail_pest_to_next": "{degree_days} °C·d before {stage}",
+    "detail_pest_estimated_biofix": "biofix estimated from the growth stage, not observed",
+    "detail_pest_incomplete_season": "accumulation started after 1 January: the cycle is probably further along than shown",
+    "pest_stage_flight": "flight under way",
+    "pest_stage_egg_laying": "egg laying",
+    "pest_stage_hatch_start": "egg hatch starting",
+    "pest_stage_hatch_peak": "peak egg hatch",
+    "pest_stage_oviposition_peak": "peak oviposition",
+    "pest_stage_second_generation": "second generation",
+    "pest_stage_approach": "emergence approaching",
+    "pest_stage_emergence": "adults emerging",
+    "pest_stage_oviposition": "egg laying under way",
+    "pest_stage_eggs": "eggs laid",
+    "pest_stage_instar_1": "first instar larvae",
+    "pest_stage_instar_2": "second instar larvae",
+    "pest_stage_instar_3": "third instar larvae",
+    "pest_stage_instar_4": "fourth instar larvae",
+    "pest_stage_pupation": "pupation",
+    "pest_stage_first_flight": "first flight",
+    "pest_stage_first_generation": "first generation larvae",
+    "pest_stage_second_flight": "second flight",
+    "pest_stage_third_flight": "third flight",
+    "pest_stage_third_generation": "third generation larvae",
+    "intent_no_tree": "No tree is being monitored yet. Add one from the Météo Sentinelle integration page.",
+    "intent_no_data": "I have no data for the orchard right now.",
+    "intent_risk_clear": "Nothing to report on {tree}.",
+    "intent_risk_worst": "The most pressing risk is {model} on {tree}: {level}.",
+    "intent_spray_open": "Yes, conditions are suitable right now, until {end}.",
+    "intent_spray_upcoming": "Not right now. The next window opens at {start} and lasts until {end}.",
+    "intent_spray_tomorrow": "Yes, tomorrow between {start} and {end}.",
+    "intent_spray_none_tomorrow": "No suitable window tomorrow.",
+    "intent_spray_no_forecast": "I have no hourly forecast, so I cannot judge the spraying conditions.",
+    "intent_spray_blocked_wind": "Not right now: the wind is too strong to spray.",
+    "intent_spray_blocked_rain": "Not right now: rain is expected too soon after the application.",
+    "intent_spray_blocked_temperature": "Not right now: the temperature is outside the useful range.",
+    "intent_spray_blocked_wind_unknown": "I have no wind forecast, so I cannot confirm the conditions are safe.",
+    "intent_spray_blocked_temperature_unknown": "I have no temperature forecast, so I cannot confirm the conditions are suitable.",
+    "intent_spray_blocked_no_forecast": "I have no hourly forecast, so I cannot judge the spraying conditions.",
+    "intent_spray_blocked_unknown": "Conditions are not suitable at the moment, and no window is in sight.",
+    "intent_stage": "{tree} is at {stage}."
   }
 }

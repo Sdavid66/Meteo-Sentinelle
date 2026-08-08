@@ -9,9 +9,11 @@
 </p>
 
 A Home Assistant integration, installable through **HACS**, that predicts
-**frost** and **plant disease** risk (late blight, powdery mildew...)
-from the sensors of **your weather station, whatever it is**, combined
-with weather forecasts.
+**frost**, **plant disease** risk (late blight, powdery mildew...) and
+**pest** risk (codling moth, cherry fruit fly, Colorado potato beetle,
+European grapevine moth) from the sensors of **your weather station,
+whatever it is**, combined with weather forecasts — and tells you when
+the window is right to treat.
 
 If you find it useful, you can buy me a coffee :-).
 
@@ -25,8 +27,14 @@ If you find it useful, you can buy me a coffee :-).
 A weather station gives you raw measurements (temperature, humidity,
 rain, leaf wetness...). This integration turns them into **actionable
 alerts**: "frost likely tonight on the apple tree in bloom", "conditions
-favourable to late blight for 2 days" — ready to use in your automations
-(notification, switching on a frost cover, preventive treatment...).
+favourable to late blight for 2 days", "codling moth: peak egg hatch on
+the apple tree" — ready to use in your automations (notification,
+switching on a frost cover, preventive treatment...).
+
+It doesn't stop at diagnosis: a **spray window** tells you when the
+forecast wind and rain actually allow treating, a **dashboard card**
+shipped with the integration gives the orchard's timeline at a glance,
+and **voice commands** (Assist) answer "can I spray tomorrow?" directly.
 
 ## Which weather station?
 
@@ -280,6 +288,54 @@ anyone up.
 These settings can be changed at any time through **Options** on the
 integration; trees are edited from their own entry.
 
+## Dashboard card
+
+A card ships **with the integration**: no extra HACS repository, no
+Lovelace resource to declare. It shows up in the card picker under
+"Météo Sentinelle" as soon as the integration is installed, and updates
+alongside the component.
+
+It draws one continuous timeline split by a "now" marker: risk level
+history on the left, upcoming spray windows and the next forecast frost
+on the right. Clicking a row opens the matching entity.
+
+Entities are detected automatically; the visual editor lets you change
+the title, the history depth and, if needed, pin an explicit entity
+list.
+
+## Voice commands (Assist)
+
+Three questions are understood, in English and French:
+
+- "What are the risks in the orchard?"
+- "Can I spray tomorrow?"
+- "What stage is the Golden apple at?"
+
+The sentence files are copied automatically into
+`custom_sentences/{en,fr}/meteo_sentinelle.yaml`. Feel free to edit
+them: as soon as a file differs from the shipped version, the
+integration stops touching it. Delete it to get the original back. The
+whole installation can be turned off in the site options.
+
+If your Assist agent is backed by a language model, the same questions
+work without those sentences: the intent handlers are exposed to the
+agent as tools.
+
+## Diagnostics: when a model cannot run
+
+This integration's most dangerous failure mode is a silent one. Without
+enough hourly history, the disease models find no evaluable day and
+report "no risk" — indistinguishable from a genuine absence of risk.
+
+A **repair** therefore appears under Settings → System → Repairs when
+coverage is insufficient, and clears itself once it is adequate again.
+Two cases are distinguished: recorder unreachable, or recorder present
+but too few usable hours — the limiting factor always being the
+least-covered measurement.
+
+The "Data source" sensor carries the detail in its attributes, and the
+degree-day sensor exposes `complete_season`.
+
 ## Risk models
 
 All models work on **hourly series** rebuilt from Home Assistant
@@ -339,6 +395,72 @@ original Gubler-Thomas does not model rain, so a −10 point penalty is
 applied beyond 2.5 mm daily, borrowing the rule from the "Hop Powdery
 Mildew" model (Cascade variant), itself derived from Gubler-Thomas. This
 can be disabled in the options.
+
+### Pests — degree days and biofix
+
+Four pests are tracked through heat accumulation, each restricted to the
+species where it makes agronomic sense:
+
+| Pest | Species | Scale | Accumulation origin |
+|---|---|---|---|
+| Codling moth | apple, pear | base 10 °C, cap 31.1 °C | biofix |
+| Cherry fruit fly | cherry | base 5 °C | 1 January |
+| Colorado potato beetle | potato | base 10 °C | biofix |
+| European grapevine moth | vine | base 7 °C | 1 January |
+
+The sensor reports a risk level like every other model, and exposes the
+milestone reached (`cycle_stage`), the accumulation, and what remains
+before the next milestone. The level expresses **how urgent action is**,
+not how bad the damage would be: the stage where the insect is most
+vulnerable carries the highest level, and it drops again once that
+window has passed.
+
+**The biofix.** For the codling moth and the potato beetle, accumulation
+only means something from an observed event — first sustained pheromone
+trap catch, first egg masses. Declare it:
+
+```yaml
+action: meteo_sentinelle.set_biofix
+data:
+  pest: codling_moth
+  tree: Golden by the fence   # omitted = every relevant tree
+  date: "2026-05-04"          # omitted = today
+```
+
+Without a declaration, the two behave differently:
+
+- the **codling moth** places an approximate biofix at full bloom, which
+  roughly coincides with the first flight. The `biofix_estimated`
+  attribute says so, and your declaration overrides it for good;
+- the **potato beetle** has no equivalent phenological anchor: its
+  sensor reports `awaiting_biofix` rather than a level computed from an
+  arbitrary origin.
+
+⚠️ **A seasonal accumulation started mid-year underestimates.** An
+integration installed in April has no February or March degree days, so
+the cherry fruit fly and the grapevine moth report the cycle as running
+late. The `incomplete_season` attribute says so, and the following
+season — started on 1 January — is correct.
+
+⚠️ **These models locate the pest in its cycle, not its population.**
+They say when the target is vulnerable, never how many individuals are
+present. A trap, or a look at the tree, remains essential before
+treating.
+
+### Spray window
+
+A site sensor searches the hourly forecast for slots where spraying
+makes sense:
+
+- **wind ≤ 19 km/h** — force 3 on the Beaufort scale, the threshold used
+  by French regulation for applying plant protection products (order of
+  4 May 2017). Check the rule that applies where you are;
+- **no rain** during the product's rainfast delay;
+- **temperature between 5 and 25 °C** — usual horticultural ranges.
+
+The sensor state is the start time of the next slot, ready to use in an
+automation. Missing data is never read as favourable: with no wind
+forecast, no slot is offered, and the `blocking` attribute explains why.
 
 ### Treatment tracking — "protected until"
 
@@ -401,9 +523,13 @@ Use this as an aid to vigilance, not as plant-health advice.
 - v0.7: ready-made frost protection blueprint.
 - v0.8: English-first documentation, bilingual blueprints, translated
   notifications.
-- **v1.0 (current)**: first stable release — the feature set, the entity
-  names and the event payloads are now considered settled, and the
-  integration is available in the HACS default store.
+- v1.0: first stable release — the feature set, the entity names and the
+  event payloads are now considered settled, and the integration is
+  available in the HACS default store.
+- **v1.1 (current)**: four degree-day pest models (codling moth, cherry
+  fruit fly, Colorado potato beetle, European grapevine moth) with a
+  declarable biofix; spray windows; a dashboard card shipped with the
+  integration; Assist voice commands; a repair when history is missing.
 - Next: apple scab (Mills table), infection cohorts with latency for
   late blight, cultivar sensitivity, learning the degree day offset from
   the user's manual corrections.

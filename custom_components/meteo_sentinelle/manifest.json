@@ -8,9 +8,13 @@
     "@Sdavid66"
   ],
   "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http"
+  ],
   "documentation": "https://github.com/Sdavid66/Meteo-Sentinelle",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/Sdavid66/Meteo-Sentinelle/issues",
   "requirements": [],
-  "version": "1.0.3"
+  "version": "1.1.0"
 }
