@@ -554,11 +554,14 @@ en deçà d'un outil professionnel sur trois points :
   d'entités et le contenu des événements sont désormais considérés comme
   figés, et l'intégration est disponible dans le magasin HACS par
   défaut.
-- **v1.1 (actuelle)** : quatre ravageurs par degrés-jours (carpocapse,
-  mouche de la cerise, doryphore, tordeuse de la grappe) avec biofix
-  déclarable ; fenêtres de pulvérisation ; carte de tableau de bord
-  livrée avec l'intégration ; commandes vocales Assist ; réparation
-  quand l'historique manque.
+- v1.1 : quatre ravageurs par degrés-jours (carpocapse, mouche de la
+  cerise, doryphore, tordeuse de la grappe) avec biofix déclarable ;
+  fenêtres de pulvérisation ; carte de tableau de bord livrée avec
+  l'intégration ; commandes vocales Assist ; réparation quand
+  l'historique manque.
+- **v1.1.1 (actuelle)** : correction de la lecture de l'historique, qui
+  échouait silencieusement depuis l'origine — les modèles maladie et le
+  cumul de degrés-jours fonctionnent enfin.
 - Ensuite : tavelure du pommier (table de Mills), cohortes d'infection
   avec latence pour le mildiou, sensibilité variétale, apprentissage du
   décalage de degrés-jours sur les corrections manuelles.

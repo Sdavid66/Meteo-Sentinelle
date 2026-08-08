@@ -526,10 +526,13 @@ Use this as an aid to vigilance, not as plant-health advice.
 - v1.0: first stable release — the feature set, the entity names and the
   event payloads are now considered settled, and the integration is
   available in the HACS default store.
-- **v1.1 (current)**: four degree-day pest models (codling moth, cherry
-  fruit fly, Colorado potato beetle, European grapevine moth) with a
-  declarable biofix; spray windows; a dashboard card shipped with the
-  integration; Assist voice commands; a repair when history is missing.
+- v1.1: four degree-day pest models (codling moth, cherry fruit fly,
+  Colorado potato beetle, European grapevine moth) with a declarable
+  biofix; spray windows; a dashboard card shipped with the integration;
+  Assist voice commands; a repair when history is missing.
+- **v1.1.1 (current)**: fixed history reading, which had been failing
+  silently since the beginning — the disease models and the degree-day
+  accumulation finally work.
 - Next: apple scab (Mills table), infection cohorts with latency for
   late blight, cultivar sensitivity, learning the degree day offset from
   the user's manual corrections.

@@ -454,17 +454,42 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         start = dt_util.utcnow() - timedelta(hours=hours)
 
         def _fetch() -> dict[str, list[State]]:
-            return history.state_changes_during_period(
-                self.hass, start, None, entity_ids, no_attributes=True
+            # `state_changes_during_period` ne prend qu'**une** entité
+            # (`entity_id`, au singulier) et lui applique `.lower()` :
+            # lui passer une liste lève une AttributeError. La fonction
+            # multi-entités est `get_significant_states`, avec
+            # `significant_changes_only=False` pour ne rien filtrer —
+            # sur des mesures numériques, le filtrage « changements
+            # significatifs » trouerait les séries horaires.
+            return history.get_significant_states(
+                self.hass,
+                start,
+                None,
+                entity_ids=entity_ids,
+                include_start_time_state=True,
+                significant_changes_only=False,
+                minimal_response=False,
+                no_attributes=True,
             )
 
         try:
             raw = await get_instance(self.hass).async_add_executor_job(_fetch)
         except Exception as err:  # noqa: BLE001 - l'historique est optionnel
-            _LOGGER.debug("Historique indisponible : %s", err)
+            # Première bascule seulement : répéter l'avertissement toutes
+            # les 15 minutes noierait le journal. La réparation, elle,
+            # reste visible tant que le problème dure.
+            if self._recorder_available:
+                _LOGGER.warning(
+                    "Lecture de l'historique impossible, les modèles maladie "
+                    "vont rester sans données : %s",
+                    err,
+                    exc_info=True,
+                )
             self._recorder_available = False
             return []
 
+        if not self._recorder_available:
+            _LOGGER.info("Lecture de l'historique rétablie")
         self._recorder_available = True
 
         def _numeric(state: State) -> float | None:
@@ -472,6 +497,18 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                 return float(state.state)
             except (TypeError, ValueError):
                 return None
+
+        def _when(state: State) -> datetime:
+            """Horodatage ramené dans la fenêtre interrogée.
+
+            `include_start_time_state` renvoie l'état **en vigueur** au
+            début de la fenêtre, dont la date de changement peut être
+            bien antérieure — un capteur stable depuis trois semaines
+            porte une date vieille de trois semaines. Sans recadrage, le
+            rééchantillonnage créerait une heure isolée très ancienne,
+            qui fausserait le comptage des journées complètes.
+            """
+            return max(state.last_changed, start)
 
         records: list[dict] = []
         for entity_id, key in (
@@ -484,13 +521,13 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             for state in raw.get(entity_id, []):
                 value = _numeric(state)
                 if value is not None:
-                    records.append({"time": state.last_changed, key: value})
+                    records.append({"time": _when(state), key: value})
 
         if leaf_entity:
             for state in raw.get(leaf_entity, []):
                 value = _numeric(state)
                 wet = value > 0 if value is not None else state.state == "on"
-                records.append({"time": state.last_changed, "leaf_wet": wet})
+                records.append({"time": _when(state), "leaf_wet": wet})
 
         return resample_hourly(records)
 
