@@ -251,7 +251,7 @@ level, an `escalated` boolean, and a ready-made `detail` string.
 
 ### Ready-made blueprints
 
-Two turnkey automations, installable in one click — no YAML to write.
+Four turnkey automations, installable in one click — no YAML to write.
 These blueprints are **not** delivered by HACS (which only installs
 `custom_components/`): they have to be imported once.
 
@@ -262,21 +262,45 @@ it, this is a plain frost alert.
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Ffrost_protection.yaml)
 
-**All-risk alerts** — routes frost, late blight, powdery mildew and
-stage changes to the channel of your choice, with filtering by minimum
-level and by risk type.
+**All-risk alerts** — routes frost, diseases, pests and stage changes to
+the channel of your choice, with filtering by minimum level and by risk
+type.
+
+⚠️ If you imported this blueprint before v1.1, pests are **not** ticked
+in your existing automation: Home Assistant keeps the saved choices, and
+a new default does not change them. Open the automation and select them
+under "Risks to watch". Re-importing the blueprint updates the offered
+list, not the automations already created.
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Frisk_alerts.yaml)
 
-French versions of both blueprints are available in
-`blueprints/automation/meteo_sentinelle/` (`protection_gel.yaml` and
-`alerte_meteo_sentinelle.yaml`) — blueprints cannot be translated by
-Home Assistant, so each language ships as its own file.
+**Spray window** — tells you when conditions finally allow spraying
+**and** a risk justifies it. This is the actionable counterpart to a risk
+alert: knowing late blight is coming helps little if the wind rules out
+spraying for three days. Trees still covered by an active treatment are
+skipped, and a time range keeps a window opening at 4 a.m. from waking
+you.
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Fspray_window.yaml)
+
+**Codling moth trap reminder** — reminds you to hang the pheromone trap
+when an apple or pear tree reaches bloom, which is exactly when the
+integration places its estimated biofix. Declaring the real first catch
+afterwards recalibrates the model to within a few days — precisely the
+accuracy the treatment window depends on.
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Fcodling_moth_trap.yaml)
+
+French versions of all four blueprints are available in
+`blueprints/automation/meteo_sentinelle/` (`protection_gel.yaml`,
+`alerte_meteo_sentinelle.yaml`, `fenetre_traitement.yaml` and
+`piege_carpocapse.yaml`) — blueprints cannot be translated by Home
+Assistant, so each language ships as its own file.
 
 If the button does not work, copy the URL of the YAML file and import it
 from **Settings → Automations & scenes → Blueprints → Import blueprint**.
 
-Both blueprints only fire when the chosen threshold is **crossed**:
+The alert blueprints only fire when the chosen threshold is **crossed**:
 staying in alert does not notify again, and dropping back below it
 triggers the return to normal.
 

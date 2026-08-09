@@ -2,13 +2,19 @@ blueprint:
   name: Météo Sentinelle — alertes de risque
   description: >-
     Envoie une notification lorsqu'un arbre surveillé passe à un niveau de
-    risque plus élevé (gel, mildiou, oïdium), ou lorsque son stade
+    risque plus élevé (gel, maladies, ravageurs), ou lorsque son stade
     phénologique est avancé automatiquement.
 
 
-    Le message inclut l'arbre concerné, son stade, et le détail utile
-    (température minimale attendue et seuil de dégâts pour le gel, indice
-    ou critère rempli pour les maladies).
+    Le message inclut l'arbre concerné, son stade, et le détail utile :
+    température minimale attendue et seuil de dégâts pour le gel, indice
+    ou critère rempli pour les maladies, jalon du cycle et degrés-jours
+    restants pour les ravageurs.
+
+
+    Si vous aviez importé une version antérieure de ce blueprint, les
+    ravageurs ne seront pas cochés dans votre automatisation existante :
+    ouvrez-la et sélectionnez-les dans « Risques à surveiller ».
   domain: automation
   author: Sdavid66
   input:
@@ -34,10 +40,18 @@ blueprint:
               value: severe
     models:
       name: Risques à surveiller
+      description: >-
+        Seuls les modèles activés dans les options de l'intégration
+        émettent des événements : cocher un risque non activé est sans
+        effet, et sans risque.
       default:
         - frost
         - late_blight
         - powdery_mildew
+        - codling_moth
+        - cherry_fruit_fly
+        - colorado_potato_beetle
+        - grapevine_moth
       selector:
         select:
           multiple: true
@@ -48,6 +62,14 @@ blueprint:
               value: late_blight
             - label: Oïdium
               value: powdery_mildew
+            - label: Carpocapse
+              value: codling_moth
+            - label: Mouche de la cerise
+              value: cherry_fruit_fly
+            - label: Doryphore
+              value: colorado_potato_beetle
+            - label: Tordeuse de la grappe
+              value: grapevine_moth
     notify_stage_changes:
       name: Notifier les changements de stade automatiques
       default: true

@@ -1,0 +1,164 @@
+blueprint:
+  name: Météo Sentinelle — fenêtre de traitement
+  description: >-
+    Prévient quand les conditions permettent enfin de pulvériser **et**
+    qu'un risque le justifie. C'est le pendant actionnable de l'alerte de
+    risque : savoir que le mildiou menace ne sert à rien si le vent
+    interdit de traiter pendant trois jours.
+
+
+    Deux déclenchements : une fenêtre de traitement s'ouvre alors qu'un
+    risque est déjà actif, ou un risque s'aggrave alors qu'une fenêtre
+    est déjà ouverte.
+
+
+    Les arbres déjà protégés par un traitement en cours peuvent être
+    écartés : les rappeler ne ferait qu'entretenir la fatigue d'alerte.
+
+
+    ⚠️ Le seuil de vent retenu par le capteur est de 19 km/h, soit le
+    degré 3 Beaufort, conformément à la réglementation française. La
+    règle applicable chez vous reste de votre responsabilité, comme le
+    choix du produit et sa légalité.
+  domain: automation
+  author: Sdavid66
+  input:
+    spray_sensor:
+      name: Capteur de fenêtre de traitement
+      description: >-
+        L'entité « Prochaine fenêtre de traitement » de votre site.
+      selector:
+        entity:
+          filter:
+            - integration: meteo_sentinelle
+              domain: sensor
+    risk_sensors:
+      name: Risques à prendre en compte
+      description: >-
+        Les capteurs de risque qui justifient une intervention — mildiou,
+        oïdium, carpocapse… Le gel n'a pas sa place ici : on ne le traite
+        pas par pulvérisation.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - integration: meteo_sentinelle
+              domain: sensor
+    minimum_level:
+      name: Niveau minimal
+      description: Niveau à partir duquel une intervention se justifie.
+      default: warning
+      selector:
+        select:
+          options:
+            - label: À surveiller
+              value: watch
+            - label: Alerte
+              value: warning
+            - label: Risque sévère
+              value: severe
+    skip_if_protected:
+      name: Ignorer les arbres déjà protégés
+      description: >-
+        N'alerte pas pour un arbre dont le traitement précédent est
+        toujours actif (rémanence non écoulée et produit non lessivé).
+      default: true
+      selector:
+        boolean:
+    notify_from:
+      name: Ne pas notifier avant
+      description: >-
+        Une fenêtre de traitement peut s'ouvrir à 4 h du matin. Rien
+        n'oblige à le savoir tout de suite.
+      default: "07:00:00"
+      selector:
+        time:
+    notify_until:
+      name: Ne pas notifier après
+      default: "21:00:00"
+      selector:
+        time:
+    notify_service:
+      name: Service de notification
+      description: >-
+        Par exemple notify.mobile_app_mon_telephone,
+        notify.persistent_notification ou un service Telegram.
+      selector:
+        text:
+
+# Une fenêtre qui s'ouvre au moment où un risque s'aggrave déclencherait
+# deux fois : la seconde exécution est écartée sans bruit.
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input spray_sensor
+    attribute: open_now
+    to: true
+    id: window
+  - trigger: event
+    event_type: meteo_sentinelle_risk_changed
+    id: risk
+
+variables:
+  spray_sensor: !input spray_sensor
+  risk_sensors: !input risk_sensors
+  minimum_level: !input minimum_level
+  skip_if_protected: !input skip_if_protected
+  ranks:
+    none: 0
+    watch: 1
+    warning: 2
+    severe: 3
+  labels:
+    watch: à surveiller
+    warning: alerte
+    severe: danger
+  # Liste des risques qui justifient d'intervenir maintenant. Renvoyée
+  # comme liste et non comme texte : le comptage reste fiable, et le
+  # formatage se fait au moment du message.
+  concerned: >-
+    {% set ns = namespace(items=[]) %}
+    {% for s in expand(risk_sensors) %}
+      {% set protection = s.attributes.get('protection', {}) or {} %}
+      {% set protected = protection.get('status', 'none') == 'protected' %}
+      {% if ranks.get(s.state, 0) >= ranks.get(minimum_level, 2)
+            and not (skip_if_protected and protected) %}
+        {% set ns.items = ns.items + [
+             s.name ~ ' (' ~ labels.get(s.state, s.state) ~ ')' ] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.items }}
+
+conditions:
+  # Une aggravation seulement, quand c'est un événement de risque qui a
+  # déclenché : un retour au calme n'a pas à notifier.
+  - condition: or
+    conditions:
+      - "{{ trigger.id == 'window' }}"
+      - "{{ trigger.id == 'risk' and trigger.event.data.escalated }}"
+  # La fenêtre doit réellement être ouverte à cet instant.
+  - "{{ state_attr(spray_sensor, 'open_now') }}"
+  # Et au moins un risque doit la justifier.
+  - "{{ concerned | count > 0 }}"
+  - condition: time
+    after: !input notify_from
+    before: !input notify_until
+
+actions:
+  - variables:
+      window: "{{ state_attr(spray_sensor, 'current') or {} }}"
+  - action: !input notify_service
+    data:
+      title: >-
+        Fenêtre de traitement ouverte{{
+          ' jusqu\'à ' ~ (window.end | as_datetime | as_local).strftime('%H:%M')
+          if window.end else '' }}
+      message: >-
+        Conditions favorables pour pulvériser.
+        À traiter : {{ concerned | join(', ') }}.
+        {%- set hours = window.hours | default(0) %}
+        {%- if hours %} Créneau de {{ hours }} h.{% endif %}
+        Pensez à enregistrer l'application avec l'action
+        meteo_sentinelle.log_treatment pour suivre la protection.

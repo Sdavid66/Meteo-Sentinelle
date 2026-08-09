@@ -1,0 +1,83 @@
+blueprint:
+  name: Météo Sentinelle — pose du piège à carpocapse
+  description: >-
+    Rappelle de poser le piège à phéromone quand vos pommiers ou poiriers
+    atteignent la floraison — le moment où le premier vol du carpocapse
+    commence, et donc où l'intégration pose son biofix estimé.
+
+
+    Pourquoi ça compte : tout le modèle du carpocapse se cale sur ce
+    biofix. Estimé à partir du stade, il donne un ordre de grandeur ;
+    déclaré d'après une vraie capture au piège, il devient juste. La
+    différence se compte en jours sur la date d'éclosion des œufs,
+    c'est-à-dire sur la seule fenêtre où un traitement sert à quelque
+    chose — une fois la larve entrée dans le fruit, il est trop tard.
+
+
+    Le déclenchement se fait sur le **capteur de stade**, pas sur
+    l'événement d'avancement automatique : ainsi une correction manuelle
+    du stade déclenche aussi le rappel.
+  domain: automation
+  author: Sdavid66
+  input:
+    stage_sensors:
+      name: Capteurs de stade phénologique
+      description: >-
+        Les entités « Stade phénologique » de vos pommiers et poiriers.
+        Les autres espèces sont ignorées automatiquement.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - integration: meteo_sentinelle
+              domain: sensor
+    trigger_stage:
+      name: Stade déclencheur
+      description: >-
+        Le premier vol démarre en gros à la floraison. Le début de
+        floraison laisse un peu d'avance pour aller acheter le piège.
+      default: full_bloom
+      selector:
+        select:
+          options:
+            - label: Début floraison
+              value: first_bloom
+            - label: Pleine floraison
+              value: full_bloom
+    notify_service:
+      name: Service de notification
+      description: >-
+        Par exemple notify.mobile_app_mon_telephone,
+        notify.persistent_notification ou un service Telegram.
+      selector:
+        text:
+
+# Un verger peut fleurir arbre par arbre sur plusieurs jours : chaque
+# arbre mérite son rappel.
+mode: queued
+max: 10
+
+triggers:
+  - trigger: state
+    entity_id: !input stage_sensors
+    to: !input trigger_stage
+
+conditions:
+  # Le carpocapse ne concerne que le pommier et le poirier. Un cerisier
+  # qui fleurit ne doit pas produire ce rappel.
+  - "{{ trigger.to_state.attributes.get('crop') in ['apple', 'pear'] }}"
+
+actions:
+  - variables:
+      tree: "{{ trigger.to_state.attributes.get('tree', trigger.to_state.name) }}"
+  - action: !input notify_service
+    data:
+      title: "{{ tree }} — posez le piège à carpocapse"
+      message: >-
+        La floraison est atteinte : c'est le moment de poser le piège à
+        phéromone.
+        Dès la première capture soutenue, déclarez-la avec l'action
+        meteo_sentinelle.set_biofix (ravageur : carpocapse) — le modèle
+        se recale alors sur votre verger.
+        Sans déclaration, un biofix estimé d'après la floraison est
+        utilisé : le suivi fonctionne, mais à quelques jours près.

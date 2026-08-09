@@ -2,13 +2,19 @@ blueprint:
   name: Météo Sentinelle — risk alerts
   description: >-
     Sends a notification when a monitored tree moves to a higher risk level
-    (frost, late blight, powdery mildew), or when its growth stage is
-    advanced automatically.
+    (frost, diseases, pests), or when its growth stage is advanced
+    automatically.
 
 
     The message includes the tree concerned, its growth stage, and the
     useful detail: minimum temperature expected and damage threshold for
-    frost, index or criterion met for diseases.
+    frost, index or criterion met for diseases, cycle milestone and
+    remaining degree days for pests.
+
+
+    If you imported an earlier version of this blueprint, pests will not
+    be ticked in your existing automation: open it and select them under
+    "Risks to watch".
   domain: automation
   author: Sdavid66
   input:
@@ -34,10 +40,18 @@ blueprint:
               value: severe
     models:
       name: Risks to watch
+      description: >-
+        Only the models enabled in the integration options emit events:
+        ticking a risk you have not enabled has no effect, and does no
+        harm.
       default:
         - frost
         - late_blight
         - powdery_mildew
+        - codling_moth
+        - cherry_fruit_fly
+        - colorado_potato_beetle
+        - grapevine_moth
       selector:
         select:
           multiple: true
@@ -48,6 +62,14 @@ blueprint:
               value: late_blight
             - label: Powdery mildew
               value: powdery_mildew
+            - label: Codling moth
+              value: codling_moth
+            - label: Cherry fruit fly
+              value: cherry_fruit_fly
+            - label: Colorado potato beetle
+              value: colorado_potato_beetle
+            - label: European grapevine moth
+              value: grapevine_moth
     notify_stage_changes:
       name: Notify automatic growth stage changes
       default: true

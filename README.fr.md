@@ -265,9 +265,9 @@ modèle, l'ancien et le nouveau niveau, un booléen `escalated` et un
 
 ### Blueprints prêts à l'emploi
 
-Deux automatisations toutes faites, à installer en un clic — aucun YAML
-à écrire. Ces blueprints ne sont **pas** livrés par HACS (qui n'installe
-que `custom_components/`) : il faut les importer une fois.
+Quatre automatisations toutes faites, à installer en un clic — aucun
+YAML à écrire. Ces blueprints ne sont **pas** livrés par HACS (qui
+n'installe que `custom_components/`) : il faut les importer une fois.
 
 **Protection contre le gel** — prévient au franchissement du seuil,
 allume un dispositif de protection (câble chauffant, aspersion, prise
@@ -276,22 +276,47 @@ facultatif : sans lui, c'est une simple alerte gel.
 
 [![Ouvrir dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Fprotection_gel.yaml)
 
-**Alertes tous risques** — route gel, mildiou, oïdium et changements de
-stade vers le canal de votre choix, avec filtrage par niveau minimal et
-par type de risque.
+**Alertes tous risques** — route gel, maladies, ravageurs et changements
+de stade vers le canal de votre choix, avec filtrage par niveau minimal
+et par type de risque.
+
+⚠️ Si vous aviez importé ce blueprint avant la v1.1, les ravageurs ne
+sont **pas** cochés dans votre automatisation existante : Home Assistant
+conserve les choix enregistrés, un nouveau défaut ne les modifie pas.
+Ouvrez l'automatisation et sélectionnez-les dans « Risques à
+surveiller ». Réimporter le blueprint met à jour la liste proposée, pas
+les automatisations déjà créées.
 
 [![Ouvrir dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Falerte_meteo_sentinelle.yaml)
 
-Les versions anglaises de ces deux blueprints existent aussi
-(`frost_protection.yaml` et `risk_alerts.yaml`) : un blueprint ne peut
-pas être traduit par Home Assistant, chaque langue est donc un fichier.
+**Fenêtre de traitement** — prévient quand les conditions permettent
+enfin de pulvériser **et** qu'un risque le justifie. C'est le pendant
+actionnable de l'alerte de risque : savoir que le mildiou menace ne sert
+à rien si le vent interdit de traiter pendant trois jours. Les arbres
+déjà protégés par un traitement en cours sont écartés, et une plage
+horaire évite d'être réveillé quand une fenêtre s'ouvre à 4 h.
+
+[![Ouvrir dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Ffenetre_traitement.yaml)
+
+**Pose du piège à carpocapse** — rappelle de poser le piège à phéromone
+quand un pommier ou un poirier atteint la floraison, c'est-à-dire au
+moment où l'intégration pose son biofix estimé. Déclarer ensuite la
+première capture réelle recale le modèle à quelques jours près, ce qui
+est exactement la précision dont dépend la fenêtre de traitement.
+
+[![Ouvrir dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Fpiege_carpocapse.yaml)
+
+Les versions anglaises de ces quatre blueprints existent aussi
+(`frost_protection.yaml`, `risk_alerts.yaml`, `spray_window.yaml` et
+`codling_moth_trap.yaml`) : un blueprint ne peut pas être traduit par
+Home Assistant, chaque langue est donc un fichier.
 
 Si le bouton ne fonctionne pas, copier l'URL du fichier YAML depuis
 `blueprints/automation/meteo_sentinelle/` et l'importer depuis
 **Paramètres → Automatisations et scènes → Blueprints → Importer**.
 
-Les deux blueprints ne se déclenchent qu'au **franchissement** du seuil
-choisi : rester en alerte ne renotifie pas, et repasser en dessous
+Les blueprints d'alerte ne se déclenchent qu'au **franchissement** du
+seuil choisi : rester en alerte ne renotifie pas, et repasser en dessous
 déclenche la remise à l'état normal.
 
 Deux principes de conception : on n'alerte **qu'aux changements** — un

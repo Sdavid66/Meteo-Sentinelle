@@ -1,0 +1,81 @@
+blueprint:
+  name: Météo Sentinelle — codling moth trap reminder
+  description: >-
+    Reminds you to hang the pheromone trap when your apple or pear trees
+    reach bloom — the moment the codling moth's first flight begins, and
+    therefore the moment the integration places its estimated biofix.
+
+
+    Why it matters: the whole codling moth model hangs off that biofix.
+    Estimated from the growth stage, it gives you the right ballpark;
+    declared from an actual trap catch, it becomes accurate. The
+    difference is measured in days on the egg hatch date — that is, on
+    the only window where treating achieves anything, since once the
+    larva is inside the fruit it is too late.
+
+
+    It fires on the **stage sensor**, not on the automatic advancement
+    event, so a manual stage correction triggers the reminder too.
+  domain: automation
+  author: Sdavid66
+  input:
+    stage_sensors:
+      name: Growth stage sensors
+      description: >-
+        The "Growth stage" entities of your apple and pear trees. Other
+        species are ignored automatically.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - integration: meteo_sentinelle
+              domain: sensor
+    trigger_stage:
+      name: Triggering stage
+      description: >-
+        The first flight roughly starts at bloom. First bloom leaves a
+        little lead time to go and buy the trap.
+      default: full_bloom
+      selector:
+        select:
+          options:
+            - label: First bloom
+              value: first_bloom
+            - label: Full bloom
+              value: full_bloom
+    notify_service:
+      name: Notification action
+      description: >-
+        For example notify.mobile_app_my_phone,
+        notify.persistent_notification, or a Telegram action.
+      selector:
+        text:
+
+# An orchard can bloom tree by tree over several days: each tree
+# deserves its own reminder.
+mode: queued
+max: 10
+
+triggers:
+  - trigger: state
+    entity_id: !input stage_sensors
+    to: !input trigger_stage
+
+conditions:
+  # The codling moth only concerns apple and pear. A cherry tree coming
+  # into bloom must not produce this reminder.
+  - "{{ trigger.to_state.attributes.get('crop') in ['apple', 'pear'] }}"
+
+actions:
+  - variables:
+      tree: "{{ trigger.to_state.attributes.get('tree', trigger.to_state.name) }}"
+  - action: !input notify_service
+    data:
+      title: "{{ tree }} — hang the codling moth trap"
+      message: >-
+        Bloom has been reached: time to hang the pheromone trap.
+        As soon as you get a first sustained catch, declare it with the
+        meteo_sentinelle.set_biofix action (pest: codling moth) — the
+        model then recalibrates on your own orchard.
+        Without a declaration, a biofix estimated from bloom is used:
+        tracking works, but only to within a few days.

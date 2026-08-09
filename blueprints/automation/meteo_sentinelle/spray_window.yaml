@@ -1,0 +1,161 @@
+blueprint:
+  name: Météo Sentinelle — spray window
+  description: >-
+    Tells you when conditions finally allow spraying **and** a risk
+    justifies it. This is the actionable counterpart to a risk alert:
+    knowing late blight is coming helps little if the wind rules out
+    spraying for three days.
+
+
+    Two ways to fire: a spray window opens while a risk is already
+    active, or a risk escalates while a window is already open.
+
+
+    Trees still covered by an active treatment can be skipped: reminding
+    you about them would only feed alert fatigue.
+
+
+    ⚠️ The wind threshold used by the sensor is 19 km/h — force 3 on the
+    Beaufort scale, following French regulation. The rule that applies
+    where you are remains your responsibility, as does the choice of
+    product and its legality.
+  domain: automation
+  author: Sdavid66
+  input:
+    spray_sensor:
+      name: Spray window sensor
+      description: The "Next spray window" entity of your site.
+      selector:
+        entity:
+          filter:
+            - integration: meteo_sentinelle
+              domain: sensor
+    risk_sensors:
+      name: Risks to take into account
+      description: >-
+        The risk sensors that justify an intervention — late blight,
+        powdery mildew, codling moth… Frost does not belong here: you do
+        not spray it away.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - integration: meteo_sentinelle
+              domain: sensor
+    minimum_level:
+      name: Minimum level
+      description: Level from which an intervention is justified.
+      default: warning
+      selector:
+        select:
+          options:
+            - label: Watch
+              value: watch
+            - label: Warning
+              value: warning
+            - label: Severe
+              value: severe
+    skip_if_protected:
+      name: Skip trees already protected
+      description: >-
+        Do not alert for a tree whose previous treatment is still active
+        (residual not elapsed and product not washed off).
+      default: true
+      selector:
+        boolean:
+    notify_from:
+      name: Do not notify before
+      description: >-
+        A spray window can open at 4 in the morning. Nothing says you
+        need to know right then.
+      default: "07:00:00"
+      selector:
+        time:
+    notify_until:
+      name: Do not notify after
+      default: "21:00:00"
+      selector:
+        time:
+    notify_service:
+      name: Notification action
+      description: >-
+        For example notify.mobile_app_my_phone,
+        notify.persistent_notification, or a Telegram action.
+      selector:
+        text:
+
+# A window opening at the very moment a risk escalates would fire twice:
+# the second run is dropped without noise.
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input spray_sensor
+    attribute: open_now
+    to: true
+    id: window
+  - trigger: event
+    event_type: meteo_sentinelle_risk_changed
+    id: risk
+
+variables:
+  spray_sensor: !input spray_sensor
+  risk_sensors: !input risk_sensors
+  minimum_level: !input minimum_level
+  skip_if_protected: !input skip_if_protected
+  ranks:
+    none: 0
+    watch: 1
+    warning: 2
+    severe: 3
+  labels:
+    watch: watch
+    warning: warning
+    severe: severe
+  # The risks that justify acting now. Returned as a list rather than
+  # text: counting stays reliable, and formatting happens in the message.
+  concerned: >-
+    {% set ns = namespace(items=[]) %}
+    {% for s in expand(risk_sensors) %}
+      {% set protection = s.attributes.get('protection', {}) or {} %}
+      {% set protected = protection.get('status', 'none') == 'protected' %}
+      {% if ranks.get(s.state, 0) >= ranks.get(minimum_level, 2)
+            and not (skip_if_protected and protected) %}
+        {% set ns.items = ns.items + [
+             s.name ~ ' (' ~ labels.get(s.state, s.state) ~ ')' ] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.items }}
+
+conditions:
+  # Only an escalation when a risk event fired: calming down does not
+  # deserve a notification.
+  - condition: or
+    conditions:
+      - "{{ trigger.id == 'window' }}"
+      - "{{ trigger.id == 'risk' and trigger.event.data.escalated }}"
+  # The window must actually be open right now.
+  - "{{ state_attr(spray_sensor, 'open_now') }}"
+  # And at least one risk must justify it.
+  - "{{ concerned | count > 0 }}"
+  - condition: time
+    after: !input notify_from
+    before: !input notify_until
+
+actions:
+  - variables:
+      window: "{{ state_attr(spray_sensor, 'current') or {} }}"
+  - action: !input notify_service
+    data:
+      title: >-
+        Spray window open{{
+          ' until ' ~ (window.end | as_datetime | as_local).strftime('%H:%M')
+          if window.end else '' }}
+      message: >-
+        Conditions are suitable for spraying.
+        To treat: {{ concerned | join(', ') }}.
+        {%- set hours = window.hours | default(0) %}
+        {%- if hours %} Window of {{ hours }} h.{% endif %}
+        Remember to record the application with the
+        meteo_sentinelle.log_treatment action to track protection.
