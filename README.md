@@ -554,9 +554,12 @@ Use this as an aid to vigilance, not as plant-health advice.
   Colorado potato beetle, European grapevine moth) with a declarable
   biofix; spray windows; a dashboard card shipped with the integration;
   Assist voice commands; a repair when history is missing.
-- **v1.1.1 (current)**: fixed history reading, which had been failing
-  silently since the beginning — the disease models and the degree-day
-  accumulation finally work.
+- v1.1.1: fixed history reading, which had been failing silently since
+  the beginning — the disease models and the degree-day accumulation
+  finally work.
+- **v1.1.2 (current)**: pests added to the "all-risk alerts" blueprint
+  (missing since v1.1.0); two new blueprints — spray window and codling
+  moth trap reminder.
 - Next: apple scab (Mills table), infection cohorts with latency for
   late blight, cultivar sensitivity, learning the degree day offset from
   the user's manual corrections.

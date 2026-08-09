@@ -584,9 +584,12 @@ en deçà d'un outil professionnel sur trois points :
   fenêtres de pulvérisation ; carte de tableau de bord livrée avec
   l'intégration ; commandes vocales Assist ; réparation quand
   l'historique manque.
-- **v1.1.1 (actuelle)** : correction de la lecture de l'historique, qui
-  échouait silencieusement depuis l'origine — les modèles maladie et le
-  cumul de degrés-jours fonctionnent enfin.
+- v1.1.1 : correction de la lecture de l'historique, qui échouait
+  silencieusement depuis l'origine — les modèles maladie et le cumul de
+  degrés-jours fonctionnent enfin.
+- **v1.1.2 (actuelle)** : ravageurs ajoutés au blueprint « alertes tous
+  risques » (manquants depuis la v1.1.0) ; deux nouveaux blueprints —
+  fenêtre de traitement et rappel de pose du piège à carpocapse.
 - Ensuite : tavelure du pommier (table de Mills), cohortes d'infection
   avec latence pour le mildiou, sensibilité variétale, apprentissage du
   décalage de degrés-jours sur les corrections manuelles.
