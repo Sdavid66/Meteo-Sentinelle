@@ -38,6 +38,7 @@ from .const import (
     TREATABLE_MODELS,
 )
 from .coordinator import MeteoSentinelleCoordinator
+from .entity import async_ensure_site_device
 from .frontend import async_register_card
 from .history_check import async_check_history, async_clear_issues
 from .intents import async_setup_intents
@@ -167,6 +168,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
+    # L'appareil « site » est créé explicitement : les appareils « arbre »
+    # s'y rattachent par `via_device_id`, qui exige un id de registre donc
+    # un parent déjà enregistré. S'en remettre à la première entité du site
+    # ne suffirait pas — `select` et `switch` peuvent être configurés avant
+    # `sensor` et créeraient alors des arbres orphelins.
+    coordinator.site_device_id = async_ensure_site_device(hass, entry)
 
     _async_register_services(hass)
 

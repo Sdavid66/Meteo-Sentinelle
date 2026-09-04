@@ -61,6 +61,10 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
         self.entry = entry
+        #: Id de registre de l'appareil « site », parent des appareils
+        #: « arbre » via `via_device_id`. Renseigné par `async_setup_entry`
+        #: avant le transfert vers les plateformes.
+        self.site_device_id: str | None = None
         self.sources: dict[str, str] = {}
         self.trees: dict[str, Tree] = {}
         #: Traitements indexés par (subentry_id, modèle).
