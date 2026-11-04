@@ -135,6 +135,20 @@
     hardy_vegetable: ["frost", "powdery_mildew"],
   };
 
+  //: Noms saisis par l'utilisateur fictif, pour une démo cohérente en anglais.
+  const EN_NAMES = {
+    Pommier: "Apple tree",
+    Abricotier: "Apricot tree",
+    Prunier: "Plum tree",
+    Jardin_tomates_courgettes: "Vegetable_patch",
+    "Cerisier du fond": "Back cherry tree",
+    "Pêcher": "Peach tree",
+    "Conférence": "Conference",
+    Tomates: "Tomatoes",
+    "Vigne de la treille": "Arbour vine",
+    "Pommes de terre": "Potatoes",
+  };
+
   const NO_PROTECTION = {
     status: "none", product: null, applied_at: null, protected_until: null,
     hours_remaining: 0, days_remaining: 0, rain_since_mm: 0, rainfast_mm: null,
@@ -189,7 +203,8 @@
       horizon_hours: 72, max_wind_kmh: 19, rainfast_hours: 2, open_now: Boolean(spray?.open),
     }, "spray_window", "site");
 
-    for (const tree of trees) {
+    for (const raw of trees) {
+      const tree = { ...raw, name: lang === "en" ? EN_NAMES[raw.name] ?? raw.name : raw.name };
       const table = TABLES[tree.crop];
       const device = `dev_${tree.id}`;
       const path = table.stages.map(([key, g, t10]) => ({ key, gdd: g, t10 }));

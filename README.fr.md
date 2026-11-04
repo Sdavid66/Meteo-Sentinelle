@@ -21,6 +21,12 @@ Si vous le souhaitez, vous pouvez me donner un peu de courage en me payant un ca
 [![Ouvrir ce dépôt dans HACS sur votre instance Home Assistant.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Sdavid66&repository=Meteo-Sentinelle&category=integration)
 ![Version](https://img.shields.io/github/v/release/Sdavid66/Meteo-Sentinelle?label=version&color=blue)
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-preview.png" alt="La carte en plein été : un bandeau annonce la mouche de la cerise, et chaque arbre est dessiné à son stade avec ses fruits, ses champignons et ses insectes" width="400">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-frost.png" alt="La carte une nuit de gel au printemps : le bandeau annonce −3,4 °C et les arbres en fleurs sont dessinés sous la neige" width="400">
+</p>
+<p align="center"><em>La <a href="#carte-de-tableau-de-bord">carte de tableau de bord</a> livrée avec l'intégration, en plein été et une nuit de gel. Données d'exemple.</em></p>
+
 ## Pourquoi
 
 Une station météo donne des mesures brutes (température, humidité,
@@ -389,9 +395,9 @@ La carte répond d'abord à une question : est-ce que je dois faire quelque
 chose, et quand ?
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-preview.png" alt="La carte en plein été : un bandeau dit ce qui presse, et chaque arbre est dessiné à son stade, avec ce qui le menace" width="420">
   <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-detail.png" alt="Le détail d'un arbre en thème sombre : parcours de la saison, jauge de gel et risques" width="420">
 </p>
+<p align="center"><em>Le détail d'un arbre, ici en thème sombre. Données d'exemple.</em></p>
 
 - **Un bandeau** dit en une phrase le risque le plus urgent, les arbres
   concernés et quand agir. Quand rien ne presse, il annonce la prochaine

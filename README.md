@@ -22,6 +22,12 @@ If you find it useful, you can buy me a coffee :-).
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Sdavid66&repository=Meteo-Sentinelle&category=integration)
 ![Version](https://img.shields.io/github/v/release/Sdavid66/Meteo-Sentinelle?label=version&color=blue)
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-preview-en.png" alt="The card in midsummer: a banner announces cherry fruit fly, and each tree is drawn at its stage with its fruit, mushrooms and insects" width="400">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-frost-en.png" alt="The card on a frosty spring night: the banner announces −3.4 °C and the trees in bloom are drawn under falling snow" width="400">
+</p>
+<p align="center"><em>The <a href="#dashboard-card">dashboard card</a> shipped with the integration, in midsummer and on a frosty night. Sample data.</em></p>
+
 ## Why
 
 A weather station gives you raw measurements (temperature, humidity,
@@ -371,9 +377,9 @@ type: custom:meteo-sentinelle-card
 The card answers one question first: do I need to do something, and when?
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-preview.png" alt="The card in midsummer: a banner states what is urgent, and each tree is drawn at its stage with what threatens it" width="420">
-  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-detail.png" alt="A tree's detail in dark theme: season path, frost gauge and risks" width="420">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-detail-en.png" alt="A tree's detail in dark theme: season path, frost gauge and risks" width="420">
 </p>
+<p align="center"><em>A tree's detail, here in dark theme. Sample data.</em></p>
 
 - **A banner** states the most urgent risk in one sentence, the trees
   concerned and when to act. When nothing is urgent, it announces the next
