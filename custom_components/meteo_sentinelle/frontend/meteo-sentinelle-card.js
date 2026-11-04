@@ -227,6 +227,12 @@ class MeteoSentinelleCard extends HTMLElement {
     };
     this._history = {};
     this._lastFetch = 0;
+    // `hass` a pu arriver avant la configuration : rien ne le renverra
+    // forcément avant le prochain changement d'état.
+    if (this._hass) {
+      this._fetchHistory();
+      this._render();
+    }
   }
 
   getCardSize() {
@@ -251,7 +257,7 @@ class MeteoSentinelleCard extends HTMLElement {
 
   async _fetchHistory() {
     const entities = this._entities();
-    if (!this._hass || !entities.length || this._loading) return;
+    if (!this._hass || !this._config || !entities.length || this._loading) return;
     this._loading = true;
     this._lastFetch = Date.now();
 
@@ -541,9 +547,9 @@ class MeteoSentinelleCardEditor extends HTMLElement {
   }
 
   _render() {
-    if (!this._config || this._rendered) {
-      if (this._rendered) return;
-    }
+    // Le frontend ne garantit pas l'ordre de `hass` et de `setConfig` : on
+    // attend les deux, `hass` donnant aussi la langue des libellés.
+    if (!this._config || !this._hass || this._rendered) return;
     const strings = t(this._hass);
     this._rendered = true;
 
