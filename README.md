@@ -202,7 +202,7 @@ and Jinja templates.
 
 Spring development follows heat accumulation, not the calendar. The
 integration therefore accumulates **growing degree days** (base 5.6 °C,
-from January 1st, daily average method) and compares that total to
+from the start of the season, daily average method) and compares that total to
 per-species, per-stage thresholds.
 
 When a threshold is crossed, the stage is **advanced and applied
@@ -211,8 +211,9 @@ Three safeguards:
 
 - **your correction wins.** Change the stage by hand from the `select`
   and it becomes the new reference;
-- **advancement is monotonic.** The model never moves a stage backwards:
-  a warm spell does not "undo" an observed bloom;
+- **advancement is monotonic within a season.** The model never moves a
+  stage backwards: a warm spell does not "undo" an observed bloom. Only
+  winter rest resets the cycle;
 - **everything can be switched off.** The *Automatic advancement* switch
   disables it for a given tree.
 
@@ -226,6 +227,42 @@ different climate or with a different cultivar, the same stages occur at
 different totals. The **growing degree day offset** field exists
 precisely to recalibrate the model: positive if your orchard is
 consistently ahead of the announcements, negative if it lags behind.
+
+## Seasons and winter rest
+
+An agronomic model only makes sense on an active plant. The plugin takes
+into account the **location set in Home Assistant** (latitude and
+elevation, under *Settings → System → General*):
+
+- **hemisphere**: the season and the degree-day total start on January 1st
+  in the north, July 1st in the south;
+- **entering rest**: on a date that depends on the location (November 5th
+  at 45° latitude at sea level, 3 days earlier per extra degree of latitude,
+  2 days earlier per 100 m of elevation), or sooner if six consecutive days
+  average below 5 °C;
+- **resuming**: by degree days, not by date. The plant wakes up when it
+  reaches the threshold of its first stage, so a late spring keeps it
+  dormant for longer;
+- **tropics** (below 23.5° latitude): no rest.
+
+The **Season** sensor shows the site's phase, the rest start date and what
+triggered it.
+
+| Crop | During rest |
+|---|---|
+| Fruit trees, vine | "Dormant" stage. Diseases and pests paused; frost only alerts on extreme cold (horticultural orders of magnitude) |
+| Tender annuals, potato | "Off season" stage. No more alerts, resumes at 100 °C·d |
+| Hardy vegetables, generic crop | Unchanged: they stay monitored |
+
+On entering rest, the powdery mildew index, biofix and bloom date reset for
+the next season. The integration also drops to one calculation per hour if
+every tree is resting.
+
+**Your observation takes precedence**: a stage picked by hand during winter
+(a greenhouse, for instance) is not overwritten. The *Winter rest* option
+turns the mechanism off for the whole site. Dates are orders of magnitude:
+if Home Assistant does not know your real elevation, set it, as it shifts
+the rest start date.
 
 ## Alerts
 

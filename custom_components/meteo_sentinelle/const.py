@@ -177,5 +177,13 @@ INTENT_STAGE = "MeteoSentinelleStage"
 CONF_ASSIST_SENTENCES = "assist_sentences"
 DEFAULT_ASSIST_SENTENCES = True
 
+# --- Saisons ---
+#: Met les arbres en repos l'hiver, selon le lieu déclaré dans Home Assistant.
+CONF_SEASONAL_REST = "seasonal_rest"
+DEFAULT_SEASONAL_REST = True
+#: Tout le verger dort : rien ne presse, et le gel éventuel d'un bois en
+#: repos se joue sur des heures, pas sur un quart d'heure.
+REST_UPDATE_INTERVAL_MINUTES = 60
+
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.state"

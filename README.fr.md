@@ -214,7 +214,7 @@ contexte pour les cartes et les modèles Jinja.
 
 Le développement printanier suit l'accumulation de chaleur, pas le
 calendrier. Le plugin cumule donc des **degrés-jours** (base 5,6 °C,
-depuis le 1er janvier, méthode de la moyenne journalière) et compare ce
+depuis le début de la saison, méthode de la moyenne journalière) et compare ce
 cumul à des seuils par espèce et par stade.
 
 Quand un seuil est franchi, le stade est **avancé et appliqué
@@ -223,8 +223,9 @@ Trois garde-fous :
 
 - **votre correction fait autorité.** Changez le stade à la main depuis
   le `select` : il devient la nouvelle référence ;
-- **l'avancement est monotone.** Le modèle ne fait jamais reculer un
-  stade : un redoux ne « défait » pas une floraison constatée ;
+- **l'avancement est monotone au sein d'une saison.** Le modèle ne fait
+  jamais reculer un stade : un redoux ne « défait » pas une floraison
+  constatée. Seul le repos hivernal remet le cycle à zéro ;
 - **tout est débrayable.** L'interrupteur *Avancement automatique*
   coupe l'automatisme pour un arbre donné.
 
@@ -239,6 +240,42 @@ surviennent à des cumuls différents. Le champ **décalage de
 degrés-jours** sert précisément à recaler le modèle : positif si votre
 verger est régulièrement en avance sur les annonces, négatif s'il est en
 retard.
+
+## Saisons et repos hivernal
+
+Un modèle agronomique n'a de sens que sur une plante en activité. Le
+plugin tient compte du **lieu défini dans Home Assistant** (latitude et
+altitude, dans *Paramètres → Système → Général*) :
+
+- **hémisphère** : la saison et le cumul de degrés-jours partent du
+  1er janvier au nord, du 1er juillet au sud ;
+- **entrée en repos** : à une date qui dépend du lieu (5 novembre à 45° de
+  latitude au niveau de la mer, 3 jours plus tôt par degré de latitude en
+  plus, 2 jours plus tôt par 100 m d'altitude), ou plus tôt si six jours
+  consécutifs passent sous 5 °C de moyenne ;
+- **reprise** : aux degrés-jours, pas à une date. La plante se réveille en
+  atteignant le seuil de son premier stade, et un printemps tardif la
+  laisse donc endormie plus longtemps ;
+- **tropiques** (moins de 23,5° de latitude) : pas de repos.
+
+Le capteur **Saison** indique la phase du site, la date de début du repos
+et ce qui l'a déclenchée.
+
+| Culture | Pendant le repos |
+|---|---|
+| Arbres fruitiers, vigne | Stade « Dormance ». Maladies et ravageurs suspendus ; le gel n'alerte que sur un froid extrême (ordres de grandeur horticoles) |
+| Annuelles gélives, pomme de terre | Stade « Hors saison ». Plus aucune alerte, reprise à 100 °C·j |
+| Légumes rustiques, culture générique | Inchangés : ils restent surveillés |
+
+À l'entrée en repos, l'indice oïdium, le biofix et la date de floraison
+repartent de zéro pour la saison suivante. L'intégration passe aussi à un
+calcul par heure si tous les arbres sont au repos.
+
+**Votre observation fait autorité** : un stade choisi à la main pendant
+l'hiver (une serre, par exemple) n'est pas réécrasé. L'option *Repos
+hivernal* désactive le mécanisme pour tout le site. Les dates sont des
+ordres de grandeur : si Home Assistant ne connaît pas votre altitude
+réelle, renseignez-la, elle décale la date d'entrée en repos.
 
 ## Alertes
 

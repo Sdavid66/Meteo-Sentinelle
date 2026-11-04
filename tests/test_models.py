@@ -11,7 +11,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import types
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,7 +31,7 @@ def _load():
     loaded = {}
     for name in ("const", "models.hourly", "models.crops", "models.frost",
                  "models.late_blight", "models.powdery_mildew",
-                 "models.treatments", "models.phenology", "tree"):
+                 "models.treatments", "models.season", "models.phenology", "tree"):
         full = f"meteo_sentinelle.{name}"
         path = CC / (name.replace(".", "/") + ".py")
         spec = importlib.util.spec_from_file_location(full, path)
@@ -361,8 +361,169 @@ check(frost.dew_point(20.0, 50.0) < 20.0, "point de rosée < température si HR 
 
 # Stade inconnu : on retient le stade le plus sensible (choix prudent)
 unknown = crops.thresholds("apple", "stade_inexistant")
-check(unknown == min(crops.CROPS["apple"].stages.values(), key=lambda t: t[0]),
+check(unknown == crops.thresholds("apple", "full_bloom"),
       "stade inconnu : repli sur le stade le plus sensible")
+
+# ======================================================================
+print("\n--- saisons : hémisphère et repos hivernal ---")
+# ======================================================================
+
+season = M["models.season"]
+Tree = M["tree"].Tree
+
+_valais = season.SiteClimate(latitude=46.26, elevation=836)
+_geneve = season.SiteClimate(latitude=46.2, elevation=375)
+_oslo = season.SiteClimate(latitude=59.9, elevation=20)
+_seville = season.SiteClimate(latitude=37.4, elevation=10)
+_santiago = season.SiteClimate(latitude=-33.4, elevation=500)
+_singapour = season.SiteClimate(latitude=1.35, elevation=15)
+
+check(_valais.season_start_month == 1, "hémisphère nord : saison au 1er janvier")
+check(_santiago.season_start_month == 7, "hémisphère sud : saison au 1er juillet")
+check(_singapour.season_start_month == 1 and not _singapour.has_winter,
+      "tropiques : pas d'hiver, saison civile")
+
+_start = season.calendar_rest_start
+check(date(2026, 10, 1) < _start(_valais, 2026) < date(2026, 11, 4),
+      "Valais à 836 m : au repos début novembre")
+check(_start(_oslo, 2026) < _start(_geneve, 2026) < _start(_seville, 2026),
+      "le repos arrive plus tôt quand la latitude augmente")
+check(_start(_valais, 2026) < _start(season.SiteClimate(46.26, 0), 2026),
+      "et plus tôt en altitude")
+check(_start(_santiago, 2026).year == 2027 and _start(_santiago, 2026).month in (4, 5, 6),
+      "hémisphère sud : le repos tombe en automne austral")
+check(_start(season.SiteClimate(24.0), 2026) == date(2026, 12, 15),
+      "borne tardive : le repos existe même aux latitudes douces")
+
+_info = season.evaluate(_valais, date(2026, 11, 4))
+check(_info.in_rest and _info.trigger == season.TRIGGER_CALENDAR,
+      "4 novembre en Valais : repos atteint, par le calendrier")
+check(not season.evaluate(_valais, date(2026, 7, 1)).in_rest, "en juillet : en activité")
+check(not season.evaluate(_santiago, date(2026, 11, 4)).in_rest,
+      "le 4 novembre à Santiago, c'est le printemps")
+check(season.evaluate(_santiago, date(2026, 7, 2)).season_year == 2026
+      and season.evaluate(_santiago, date(2026, 6, 2)).season_year == 2025,
+      "hémisphère sud : l'année de saison bascule au 1er juillet")
+check(not season.evaluate(_singapour, date(2026, 12, 25)).rest_enabled,
+      "tropiques : aucun repos")
+check(not season.evaluate(_valais, date(2026, 12, 25), enabled=False).rest_enabled,
+      "repos désactivable dans les options")
+
+# Vague de froid : six jours consécutifs sous 5 °C, seulement en automne.
+def _spell(start, count=6, mean=2.0):
+    return [(start + timedelta(days=i), mean) for i in range(count)]
+
+_paris = season.SiteClimate(latitude=48.9, elevation=35)
+check(season.find_cold_spell(_spell(date(2026, 10, 1)), _paris) == date(2026, 10, 6),
+      "six jours froids en octobre déclenchent le repos")
+check(season.find_cold_spell(_spell(date(2026, 10, 1), 5), _paris) is None,
+      "cinq jours ne suffisent pas")
+check(season.find_cold_spell(_spell(date(2026, 3, 1), 10), _paris) is None,
+      "le froid de mars n'endort pas un verger")
+_gap = _spell(date(2026, 10, 1), 3) + _spell(date(2026, 10, 5), 3)
+check(season.find_cold_spell(_gap, _paris) is None,
+      "un jour manquant interrompt la série : une panne n'est pas du froid")
+check(season.find_cold_spell(_spell(date(2026, 10, 1), 6, 6.0), _paris) is None,
+      "au-dessus de 5 °C de moyenne, ce n'est pas une vague de froid")
+_cold = season.evaluate(_paris, date(2026, 10, 7), cold_spell=date(2026, 10, 6))
+check(_cold.in_rest and _cold.trigger == season.TRIGGER_COLD_SPELL,
+      "la vague de froid devance le calendrier")
+check(not season.evaluate(_paris, date(2027, 6, 1), cold_spell=date(2026, 10, 6)).in_rest,
+      "le froid de l'an passé ne compte plus")
+
+# Repos appliqué une seule fois par saison.
+_info = season.evaluate(_valais, date(2026, 11, 4))
+check(season.rest_due(_info, None, date(2026, 5, 1)) == 2026, "repos dû une première fois")
+check(season.rest_due(_info, 2026, date(2026, 11, 4)) is None,
+      "et pas deux : une correction manuelle en hiver tient")
+_spring = season.evaluate(_valais, date(2027, 2, 10))
+check(season.rest_due(_spring, 2026, date(2026, 11, 4)) is None,
+      "au printemps, le repos de l'hiver écoulé est déjà appliqué")
+check(season.rest_due(_spring, None, date(2026, 5, 1)) == 2026,
+      "mise à jour en plein hiver : le stade périmé est rattrapé")
+check(season.rest_due(_spring, None, date(2027, 2, 1)) is None,
+      "un stade corrigé cette saison n'est pas périmé")
+check(season.rest_due(_spring, None, None) is None,
+      "un arbre neuf n'a pas de saison à rattraper")
+
+# Clôture de saison sur un arbre.
+_tree = Tree(subentry_id="a", name="Golden", crop="apple", stage="full_bloom",
+             mildew_index=60, mildew_started=True, biofix={"codling_moth": {"gdd": 1.0}},
+             bloom_date=datetime(2026, 4, 20))
+check(_tree.enter_rest(2026, datetime(2026, 11, 4)) and _tree.stage == crops.DORMANT,
+      "un pommier passe en dormance")
+check(_tree.mildew_index == 0 and not _tree.biofix and _tree.bloom_date is None,
+      "les compteurs de la saison repartent de zéro")
+check(_tree.resting and _tree.rest_season == 2026, "et l'arbre se sait au repos")
+_restored = Tree(subentry_id="a", name="Golden", crop="apple")
+_restored.restore_state(_tree.state_dict())
+check(_restored.rest_season == 2026, "la saison traitée survit à un redémarrage")
+
+_tomato = Tree(subentry_id="b", name="T", crop="tender_annual", stage="growing")
+_tomato.enter_rest(2026, datetime(2026, 11, 4))
+check(_tomato.stage == crops.OFF_SEASON, "une annuelle passe hors saison")
+_leek = Tree(subentry_id="c", name="P", crop="hardy_vegetable", stage="growing",
+             mildew_index=40)
+check(not _leek.enter_rest(2026, datetime(2026, 11, 4)) and _leek.stage == "growing",
+      "un poireau reste en terre : il garde son stade")
+check(_leek.mildew_index == 0 and not _leek.resting,
+      "mais sa saison d'oïdium est bien close")
+
+# Gel au repos : seul un froid extrême compte, et rien pour une annuelle.
+_cold5 = [(datetime(2026, 11, 5, 6), -5.0)]
+check(frost.evaluate_frost_risk(3, 70, 5, 0, _cold5, "apple", "full_bloom").level
+      == const.RISK_SEVERE, "-5 °C en pleine floraison : sévère")
+check(frost.evaluate_frost_risk(3, 70, 5, 0, _cold5, "apple", crops.DORMANT).level
+      == const.RISK_NONE, "-5 °C sur un pommier en dormance : rien")
+check(frost.evaluate_frost_risk(3, 70, 5, 0, [(datetime(2027, 1, 5, 6), -26.0)],
+                                "peach", crops.DORMANT).level == const.RISK_SEVERE,
+      "un froid extrême reste signalé sur le bois en repos")
+check(frost.evaluate_frost_risk(3, 70, 5, 0, _cold5, "tender_annual", crops.OFF_SEASON).level
+      == const.RISK_NONE, "rien en terre : pas de gel à craindre")
+check(crops.default_stage("apple") == "silver_tip",
+      "un nouvel arbre ne démarre pas en dormance par défaut")
+check(crops.stage_options("tender_annual") == [crops.OFF_SEASON, "growing"],
+      "le stade hors saison est sélectionnable")
+
+# Reprise au printemps, par les degrés-jours.
+check(phenology.propose_advance("apple", crops.DORMANT, 50) is None,
+      "50 °C·j : le pommier dort encore")
+check(phenology.propose_advance("apple", crops.DORMANT, 95) == "silver_tip",
+      "95 °C·j : pointe argentée")
+check(phenology.propose_advance("tender_annual", crops.OFF_SEASON, 120) == "growing",
+      "une annuelle reprend au seuil de veille")
+check(phenology.wake_stage("apple", 95) == "silver_tip"
+      and phenology.wake_stage("apple", 50) is None,
+      "sans avancement automatique, l'arbre se réveille quand même")
+check(phenology.wake_stage("vine", 160) == "bud_swell",
+      "la vigne se réveille au gonflement, pas à son stade de dormance")
+check(phenology.next_stage_threshold("apple", crops.DORMANT) == ("silver_tip", 90),
+      "le capteur de stade annonce la reprise")
+
+# Cumul calé sur l'hémisphère sud : l'hiver reste d'un seul côté.
+_south = phenology.GddState(season_year=2026, start_month=7)
+_south = phenology.accumulate(_south, [(date(2026, 12, 30), 15.0, 25.0),
+                                       (date(2027, 1, 2), 15.0, 25.0)])
+check(_south.season_year == 2026 and abs(_south.total - 28.8) < 1e-6,
+      "le 1er janvier ne coupe pas l'été austral")
+check(_south.start_month == 7, "le début de saison est conservé")
+_south = phenology.accumulate(_south, [(date(2027, 7, 2), 5.0, 15.0)])
+check(_south.season_year == 2027 and abs(_south.total - 4.4) < 1e-6,
+      "le cumul repart au 1er juillet")
+check(_south.complete_season, "et couvre bien le début de la saison australe")
+
+# Passage de saison : ni réveil au 1er janvier, ni retour en arrière.
+_old = phenology.GddState(season_year=2026, total=1800.0, last_day="2026-12-31")
+_rolled = phenology.roll_season(_old, 2027)
+check(_rolled.total == 0.0 and _rolled.season_year == 2027,
+      "le 1er janvier, le cumul de l'an passé est clos avant tout jour complet")
+check(phenology.roll_season(_rolled, 2027) is _rolled, "et une seule fois")
+check(phenology.propose_advance("apple", crops.DORMANT, _rolled.total) is None,
+      "l'arbre endormi ne se réveille donc pas au dernier stade")
+_jan = phenology.accumulate(_rolled, [(date(2026, 12, 30), 15.0, 25.0),
+                                      (date(2027, 1, 2), 15.0, 25.0)])
+check(_jan.season_year == 2027 and abs(_jan.total - 14.4) < 1e-6,
+      "les jours de décembre encore en historique ne rouvrent pas la saison passée")
 
 # ======================================================================
 print("\n--- traitements : protégé jusqu'à ---")

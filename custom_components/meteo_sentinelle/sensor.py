@@ -26,7 +26,7 @@ from .const import (
     TREATABLE_MODELS,
 )
 from .entity import MeteoSentinelleSiteEntity, MeteoSentinelleTreeEntity
-from .models import phenology
+from .models import phenology, season
 from .models.crops import STAGE_LABELS, all_stage_keys
 from .tree import Tree
 
@@ -79,6 +79,7 @@ async def async_setup_entry(
         [
             DataSourceSensor(coordinator, entry),
             GddSensor(coordinator, entry),
+            SeasonSensor(coordinator, entry),
             SprayWindowSensor(coordinator, entry),
         ]
     )
@@ -134,6 +135,7 @@ class RiskSensor(MeteoSentinelleTreeEntity, SensorEntity):
             attributes["crop"] = tree.crop
             attributes["stage"] = tree.stage
             attributes["stage_label"] = tree.stage_label
+            attributes["resting"] = tree.resting
         attributes["sources"] = dict(getattr(self.coordinator, "sources", {}))
         protection = self.coordinator.tree_protection(self._subentry_id, self._model_key)
         if protection:
@@ -183,6 +185,7 @@ class StageSensor(MeteoSentinelleTreeEntity, SensorEntity):
             "crop_label": tree.crop_label,
             "stage_key": tree.stage,
             "auto_advance": tree.auto_advance,
+            "resting": tree.resting,
             "last_change_automatic": tree.stage_auto_applied,
             "changed_at": (
                 tree.stage_changed_at.isoformat() if tree.stage_changed_at else None
@@ -294,6 +297,41 @@ class GddSensor(MeteoSentinelleSiteEntity, SensorEntity):
             # la date d'installation.
             "complete_season": gdd.complete_season,
             "recent_days": gdd.recent,
+        }
+
+
+class SeasonSensor(MeteoSentinelleSiteEntity, SensorEntity):
+    """Où en est le site dans sa saison, et ce qui l'a décidé."""
+
+    _attr_icon = "mdi:leaf-maple"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = season.PHASES
+
+    def __init__(self, coordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_season"
+        self._attr_translation_key = "season"
+
+    @property
+    def native_value(self) -> str:
+        return self.coordinator.season_phase
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        info = self.coordinator.season
+        climate = self.coordinator.climate
+        return {
+            "hemisphere": info.hemisphere,
+            "latitude": climate.latitude,
+            "elevation": climate.elevation,
+            "season_start": info.season_start.isoformat(),
+            "rest_start": info.rest_start.isoformat() if info.rest_start else None,
+            "rest_trigger": info.trigger,
+            "trees_resting": [
+                tree.display_name
+                for tree in self.coordinator.trees.values()
+                if tree.resting
+            ],
         }
 
 

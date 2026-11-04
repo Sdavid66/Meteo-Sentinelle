@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from ..const import RISK_NONE, RISK_SEVERE, RISK_WARNING, RISK_WATCH
-from .crops import GENERIC_CROP, is_ground_level, thresholds
+from .crops import GENERIC_CROP, OFF_SEASON, is_ground_level, thresholds
 
 #: Écart maximal entre l'air à 2 m et la surface, sous ciel dégagé et
 #: vent nul. Paramétrisation empirique (ordre de grandeur documenté :
@@ -156,7 +156,11 @@ def evaluate_frost_risk(
     reference = "surface" if ground else "air"
 
     limits = thresholds(crop, stage) if crop != GENERIC_CROP else None
-    if limits is None:
+    if stage == OFF_SEASON:
+        # Rien en terre : la température reste exposée, mais rien ne gèle.
+        level, damage = RISK_NONE, "none"
+        t10 = t90 = None
+    elif limits is None:
         level, damage = _generic_level(reference_min)
         t10 = t90 = None
     else:

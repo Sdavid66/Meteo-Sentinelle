@@ -14,6 +14,7 @@
           "weather_entity": "Weather entity for forecasts (e.g. MeteoSwiss)",
           "enabled_models": "Risk models to enable",
           "powdery_mildew_rain_penalty": "Powdery mildew: account for the inhibiting effect of rain",
+          "seasonal_rest": "Winter rest: pause trees and crops according to the season at the location set in Home Assistant",
           "notifications": "Create notifications in Home Assistant",
           "assist_sentences": "Install voice commands for Assist"
         }
@@ -81,6 +82,7 @@
           "weather_entity": "Weather entity for forecasts (e.g. MeteoSwiss)",
           "enabled_models": "Risk models to enable",
           "powdery_mildew_rain_penalty": "Powdery mildew: account for the inhibiting effect of rain",
+          "seasonal_rest": "Winter rest: pause trees and crops according to the season at the location set in Home Assistant",
           "notifications": "Create notifications in Home Assistant",
           "assist_sentences": "Install voice commands for Assist",
           "fallback_temperature_entity": "Backup temperature (MeteoSwiss)",
@@ -135,7 +137,8 @@
           "dormant": "Dormant",
           "bud_swell": "Bud swell",
           "first_leaves": "First leaves",
-          "shoots_10cm": "Shoots 10 cm"
+          "shoots_10cm": "Shoots 10 cm",
+          "off_season": "Off season"
         }
       }
     },
@@ -235,7 +238,8 @@
           "dormant": "Dormant",
           "bud_swell": "Bud swell",
           "first_leaves": "First leaves",
-          "shoots_10cm": "Shoots 10 cm"
+          "shoots_10cm": "Shoots 10 cm",
+          "off_season": "Off season"
         }
       },
       "powdery_mildew_index": {
@@ -272,6 +276,15 @@
           "meteoswiss": "Official station",
           "mixed": "Mixed sources",
           "unavailable": "Unavailable"
+        }
+      },
+      "season": {
+        "name": "Season",
+        "state": {
+          "growing": "Growing season",
+          "winter_rest": "Winter rest",
+          "no_winter": "No winter (tropics)",
+          "disabled": "Disabled"
         }
       }
     },
@@ -426,7 +439,8 @@
         "dormant": "Dormant",
         "bud_swell": "Bud swell",
         "first_leaves": "First leaves",
-        "shoots_10cm": "Shoots 10 cm"
+        "shoots_10cm": "Shoots 10 cm",
+        "off_season": "Off season"
       }
     },
     "enabled_models": {
@@ -467,6 +481,8 @@
     "notify_stage_title": "{tree} — growth stage advanced automatically",
     "notify_stage_change": "The growth stage moved from {previous} to {stage}, based on accumulated growing degree days ({gdd} °C·d).",
     "notify_stage_advice": "This change was applied automatically and alters the frost thresholds used for this tree. If it does not match what you observe, correct it from the growth stage entity: your correction takes precedence. You can also turn off automatic advancement for this tree.",
+    "notify_rest_title": "{tree} — winter rest",
+    "notify_rest_advice": "The season is over at your location: disease and pest models are paused for this tree and its seasonal counters have been reset. They resume on their own once enough warmth has built up in spring. If this does not match what you observe, correct the growth stage: your correction takes precedence.",
     "stage_not_set": "not set",
     "detail_frost_min_air": "minimum expected {temperature} °C in the shade",
     "detail_frost_min_ground": "minimum expected {temperature} °C at ground level",

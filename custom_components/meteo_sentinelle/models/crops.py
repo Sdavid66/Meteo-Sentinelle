@@ -1,6 +1,6 @@
 """Températures critiques de gel par culture et stade phénologique.
 
-Il n'existe pas *un* seuil de gel : un pommier supporte −18 °C en
+Il n'existe pas *un* seuil de gel : un pommier supporte −25 °C en
 dormance et souffre à −2 °C en pleine floraison. Annoncer « il va faire
 −2 °C » n'informe pas ; annoncer « −2 °C alors que vos pommiers sont en
 pleine floraison » informe.
@@ -22,6 +22,14 @@ from dataclasses import dataclass
 # (T10, T90) en °C. T90 vaut None quand la source ne la documente pas.
 StageThresholds = tuple[float, float | None]
 
+#: Stades de repos : la plante n'est pas en activité, les modèles maladie
+#: et ravageurs n'ont rien à évaluer.
+#: - « dormant » : bois vivant, seul un froid extrême le menace ;
+#: - « off_season » : culture annuelle, rien en terre, plus rien à geler.
+DORMANT = "dormant"
+OFF_SEASON = "off_season"
+REST_STAGES = {DORMANT, OFF_SEASON}
+
 
 @dataclass(frozen=True)
 class Crop:
@@ -35,6 +43,10 @@ class Crop:
     #: la température de l'air à 2 m.
     ground_level: bool = False
     source: str = "WSU / USU Extension IPM-012-11"
+    #: Stade appliqué pendant le repos hivernal. None : la culture reste
+    #: en place l'hiver sans s'arrêter (légumes rustiques) ou n'est pas
+    #: connue (culture générique), et continue d'être surveillée.
+    rest_stage: str | None = None
 
 
 _TREE_FRUIT: dict[str, dict[str, StageThresholds]] = {
@@ -97,6 +109,19 @@ _TREE_FRUIT: dict[str, dict[str, StageThresholds]] = {
     },
 }
 
+#: Rusticité du bois en repos (T10, T90). Absente des tables WSU, qui
+#: commencent au gonflement : ce sont des ordres de grandeur horticoles,
+#: très dépendants de la variété et de l'endurcissement. Ils ne servent
+#: qu'à signaler un froid exceptionnel.
+_DORMANT_HARDINESS: dict[str, StageThresholds] = {
+    "apple": (-25.0, -30.0),
+    "pear": (-25.0, -30.0),
+    "apricot": (-21.0, -26.0),
+    "plum": (-24.0, -29.0),
+    "peach": (-19.0, -24.0),
+    "sweet_cherry": (-23.0, -28.0),
+}
+
 _LABELS = {
     "apple": "Pommier",
     "pear": "Poirier",
@@ -107,7 +132,12 @@ _LABELS = {
 }
 
 CROPS: dict[str, Crop] = {
-    key: Crop(key=key, label=_LABELS[key], stages=stages)
+    key: Crop(
+        key=key,
+        label=_LABELS[key],
+        stages={DORMANT: _DORMANT_HARDINESS[key], **stages},
+        rest_stage=DORMANT,
+    )
     for key, stages in _TREE_FRUIT.items()
 }
 
@@ -120,6 +150,7 @@ CROPS["tender_annual"] = Crop(
     },
     ground_level=True,
     source="generic",
+    rest_stage=OFF_SEASON,
 )
 CROPS["potato"] = Crop(
     key="potato",
@@ -129,6 +160,7 @@ CROPS["potato"] = Crop(
     },
     ground_level=True,
     source="generic",
+    rest_stage=OFF_SEASON,
 )
 CROPS["hardy_vegetable"] = Crop(
     key="hardy_vegetable",
@@ -150,6 +182,7 @@ CROPS["vine"] = Crop(
         "shoots_10cm": (-1.0, -2.0),
     },
     source="generic",
+    rest_stage=DORMANT,
 )
 
 #: Culture générique : conserve le comportement historique (seuils fixes)
@@ -190,6 +223,7 @@ STAGE_LABELS = {
     # Cultures basses
     "growing": "En végétation",
     "emerged": "Levée effectuée",
+    "off_season": "Hors saison",
 }
 
 
@@ -209,7 +243,22 @@ def stage_options(crop_key: str) -> list[str]:
     crop = CROPS.get(crop_key)
     if crop is None:
         return []
+    if crop.rest_stage and crop.rest_stage not in crop.stages:
+        return [crop.rest_stage, *crop.stages]
     return list(crop.stages)
+
+
+def default_stage(crop_key: str) -> str | None:
+    """Stade proposé pour un nouvel arbre : le premier stade d'activité."""
+    stages = stage_options(crop_key)
+    active = [stage for stage in stages if stage not in REST_STAGES]
+    return (active or stages or [None])[0]
+
+
+def rest_stage(crop_key: str) -> str | None:
+    """Stade de repos hivernal d'une culture, si elle en a un."""
+    crop = CROPS.get(crop_key)
+    return crop.rest_stage if crop else None
 
 
 def all_stage_keys() -> list[str]:
@@ -219,8 +268,8 @@ def all_stage_keys() -> list[str]:
     annoncer l'ensemble des valeurs qu'il peut prendre.
     """
     seen: list[str] = []
-    for crop in CROPS.values():
-        for stage in crop.stages:
+    for crop_key in CROPS:
+        for stage in stage_options(crop_key):
             if stage not in seen:
                 seen.append(stage)
     return seen
@@ -236,7 +285,10 @@ def thresholds(crop_key: str, stage_key: str | None) -> StageThresholds | None:
     # Stade absent (culture changée en cours de route) : on prend le stade
     # le plus sensible, choix prudent.
     if crop.stages:
-        return min(crop.stages.values(), key=lambda t: t[0])
+        return max(
+            crop.stages.values(),
+            key=lambda t: (t[0], t[0] if t[1] is None else t[1]),
+        )
     return None
 
 

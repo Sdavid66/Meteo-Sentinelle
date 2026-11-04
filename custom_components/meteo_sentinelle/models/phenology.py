@@ -34,6 +34,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from .crops import REST_STAGES
+from .season import season_year as _season_year
+
 #: Température de base des degrés-jours arbres fruitiers (42 °F).
 GDD_BASE_C = 5.6
 
@@ -109,6 +112,12 @@ STAGE_GDD: dict[str, dict[str, float]] = {
         "first_leaves": 300,
         "shoots_10cm": 400,
     },
+    # Annuelles : aucune phénologie suivie, ce seuil marque seulement le
+    # moment de recommencer à surveiller. Il est volontairement précoce —
+    # un plant sorti trop tôt et gelé sans alerte coûte plus cher qu'une
+    # veille commencée quelques semaines avant la plantation.
+    "tender_annual": {"growing": 100},
+    "potato": {"emerged": 100},
 }
 
 #: Durée indicative entre pleine floraison et récolte (jours), à titre
@@ -141,6 +150,8 @@ class GddState:
     first_day: str | None = None
     #: Détail des derniers jours, pour diagnostic.
     recent: list[dict] = field(default_factory=list)
+    #: Mois de début de saison : janvier, ou juillet dans l'hémisphère sud.
+    start_month: int = 1
 
     @property
     def complete_season(self) -> bool:
@@ -153,7 +164,7 @@ class GddState:
         """
         if self.first_day is None:
             return False
-        return self.first_day <= f"{self.season_year}-01-31"
+        return self.first_day <= f"{self.season_year}-{self.start_month:02d}-31"
 
 
 def daily_gdd(
@@ -201,9 +212,17 @@ def accumulate(
     season = state.season_year
 
     for day, tmin, tmax in days:
-        # Changement d'année : la saison redémarre au 1er janvier.
-        if day.year != season:
-            season = day.year
+        # Changement de saison : le cumul repart de zéro, au 1er janvier
+        # ou au 1er juillet selon l'hémisphère.
+        #
+        # Seulement vers l'avant : début janvier, l'historique relu contient
+        # encore des jours de décembre, qui ne doivent pas rouvrir la saison
+        # passée et lui faire perdre son cumul.
+        day_season = _season_year(day, state.start_month)
+        if day_season < season:
+            continue
+        if day_season > season:
+            season = day_season
             total = 0.0
             last_day = None
             first_day = None
@@ -228,7 +247,21 @@ def accumulate(
         last_day=last_day,
         first_day=first_day,
         recent=recent[-14:],
+        start_month=state.start_month,
     )
+
+
+def roll_season(state: GddState, season: int) -> GddState:
+    """Ouvre la saison `season` si le cumul en est encore à une précédente.
+
+    `accumulate` n'y suffit pas : il ne voit passer un nouveau jour qu'une
+    fois celui-ci complet. Pendant tout le premier jour de la saison, le
+    cumul resterait celui de l'année écoulée, assez élevé pour réveiller
+    d'un coup tous les arbres au dernier stade.
+    """
+    if state.season_year >= season:
+        return state
+    return GddState(season_year=season, start_month=state.start_month)
 
 
 def ordered_stages(crop: str) -> list[str]:
@@ -259,7 +292,7 @@ def next_stage_threshold(crop: str, stage: str | None) -> tuple[str, float] | No
     if not stages:
         return None
     table = STAGE_GDD[crop]
-    if stage is None:
+    if stage is None or (stage in REST_STAGES and stage not in stages):
         return stages[0], table[stages[0]]
     if stage not in stages:
         return None
@@ -297,6 +330,23 @@ def propose_advance(
 
     if stages.index(expected) > stages.index(current_stage):
         return expected
+    return None
+
+
+def wake_stage(crop: str, gdd_total: float, offset: float = 0.0) -> str | None:
+    """Premier stade d'activité, s'il est atteint ; sinon None.
+
+    Sert aux arbres dont l'avancement automatique est désactivé. Eux aussi
+    passent en repos, et personne ne pense à les réveiller en février : les
+    laisser endormis ferait taire les alertes de gel au pire moment. Ils
+    reprennent donc au premier stade, et la suite reste à l'utilisateur.
+    """
+    table = STAGE_GDD.get(crop)
+    if not table:
+        return None
+    for stage in ordered_stages(crop):
+        if stage not in REST_STAGES:
+            return stage if gdd_total + offset >= table[stage] else None
     return None
 
 

@@ -441,6 +441,18 @@ Contraintes respectées pour le format `brand/` : PNG carré, canal
 alpha, détouré sans marge transparente, 256 px et 512 px — les mêmes
 exigences que `home-assistant/brands`, seul l'emplacement change.
 
+### Saisons : le stade porte l'état de repos
+
+`models/season.py` déduit du lieu (`hass.config.latitude`, `elevation`) le
+début de saison et la date d'entrée en repos. Il n'y a pas de drapeau
+« au repos » séparé : `Tree.resting` lit simplement le stade (`dormant`,
+`off_season`). Une correction manuelle réveille donc l'arbre sans cas
+particulier, et `Tree.rest_season` garantit qu'elle n'est pas réécrasée.
+
+Au repos, les modèles renvoient quand même un résultat `none` plutôt que
+rien : les entités sont créées d'après les résultats du premier cycle, et
+un résultat absent les ferait disparaître à chaque redémarrage hivernal.
+
 ## Ce qu'il reste à faire avant publication HACS
 
 1. Intégrer `tests/test_models.py` (140 vérifications, exécutable sans

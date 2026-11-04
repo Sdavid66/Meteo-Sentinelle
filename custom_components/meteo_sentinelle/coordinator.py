@@ -23,13 +23,17 @@ from .const import (
     CONF_ENABLED_MODELS,
     CONF_LEAF_WETNESS_ENTITY,
     CONF_RAIN_PENALTY,
+    CONF_SEASONAL_REST,
     CONF_WEATHER_ENTITY,
+    DEFAULT_SEASONAL_REST,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     HISTORY_HOURS,
     MEASUREMENT_SOURCES,
     MODEL_FROST,
     MODEL_LATE_BLIGHT,
     MODEL_POWDERY_MILDEW,
+    REST_UPDATE_INTERVAL_MINUTES,
+    RISK_NONE,
     SOURCE_FALLBACK,
     SOURCE_NONE,
     SOURCE_PRIMARY,
@@ -39,12 +43,12 @@ from .const import (
     TREATABLE_MODELS,
 )
 from .models import pests as pest_models
-from .models import phenology
+from .models import phenology, season
 from .models.frost import evaluate_frost_risk
 from .models.hourly import HourlySample, complete_days, resample_hourly
-from .models.late_blight import evaluate_late_blight_risk
+from .models.late_blight import LateBlightRisk, evaluate_late_blight_risk
 from .models.phenology import GddState
-from .models.powdery_mildew import evaluate_powdery_mildew_risk
+from .models.powdery_mildew import PowderyMildewRisk, evaluate_powdery_mildew_risk
 from .models.spray import ForecastHour, SprayAdvice, find_spray_windows
 from .models.treatments import Treatment, adjusted_level, protection_state
 from .tree import Tree
@@ -70,7 +74,16 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         #: Traitements indexés par (subentry_id, modèle).
         self.treatments: dict[tuple[str, str], Treatment] = {}
         self.protection: dict[str, dict[str, dict]] = {}
-        self.gdd = GddState(season_year=dt_util.now().year)
+        #: Le lieu vient de la configuration de Home Assistant : c'est lui
+        #: qui décide de l'hémisphère et de la date du repos hivernal.
+        self.climate = season.SiteClimate(
+            latitude=hass.config.latitude, elevation=hass.config.elevation or 0
+        )
+        self.season = season.evaluate(self.climate, dt_util.now().date())
+        #: Vague de froid observée cet automne, mémorisée car l'historique
+        #: relu à chaque cycle ne remonte que de quelques jours.
+        self.cold_spell: date | None = None
+        self.gdd = self._new_gdd()
         #: Cumuls thermiques des ravageurs, indexés par barème
         #: (base, plafond) : deux ravageurs de même barème partagent la
         #: même série plutôt que de la recalculer chacun de leur côté.
@@ -91,6 +104,31 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             _LOGGER,
             name="Météo Sentinelle",
             update_interval=timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES),
+        )
+
+    def _new_gdd(self, data: dict | None = None) -> GddState:
+        """Cumul relu du stockage, ou neuf s'il n'est plus exploitable.
+
+        Un cumul calé sur un autre début de saison (lieu changé d'hémisphère,
+        ou stocké avant la prise en compte des saisons dans le sud) ne peut
+        pas être converti : on repart de zéro plutôt que de le garder faux.
+        """
+        start_month = self.climate.season_start_month
+        data = data or {}
+        if int(data.get("start_month", 1)) != start_month:
+            data = {}
+        return GddState(
+            season_year=int(
+                data.get(
+                    "season_year",
+                    season.season_year(dt_util.now().date(), start_month),
+                )
+            ),
+            total=float(data.get("total", 0.0)),
+            last_day=data.get("last_day"),
+            first_day=data.get("first_day"),
+            recent=list(data.get("recent") or []),
+            start_month=start_month,
         )
 
     # ------------------------------------------------------------------
@@ -119,6 +157,9 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                     # cerisier : on repart de zéro plutôt que de traîner
                     # une origine de cumul héritée d'une autre espèce.
                     tree.biofix = {}
+                    # Le stade vient d'être repris de la configuration : le
+                    # repos de la saison reste à appliquer à la nouvelle espèce.
+                    tree.rest_season = None
             self.trees[subentry.subentry_id] = tree
 
     def tree(self, subentry_id: str) -> Tree | None:
@@ -131,26 +172,20 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
     async def async_load_state(self) -> None:
         stored = await self._store.async_load() or {}
 
-        gdd = stored.get("gdd") or {}
-        self.gdd = GddState(
-            season_year=int(gdd.get("season_year", dt_util.now().year)),
-            total=float(gdd.get("total", 0.0)),
-            last_day=gdd.get("last_day"),
-            first_day=gdd.get("first_day"),
-            recent=list(gdd.get("recent") or []),
-        )
+        self.gdd = self._new_gdd(stored.get("gdd"))
 
         self.pest_gdd = {
-            key: GddState(
-                season_year=int(data.get("season_year", dt_util.now().year)),
-                total=float(data.get("total", 0.0)),
-                last_day=data.get("last_day"),
-                first_day=data.get("first_day"),
-                recent=list(data.get("recent") or []),
-            )
+            key: self._new_gdd(data)
             for key, data in (stored.get("pest_gdd") or {}).items()
             if isinstance(data, dict)
         }
+
+        cold_spell = stored.get("cold_spell")
+        if cold_spell:
+            try:
+                self.cold_spell = date.fromisoformat(cold_spell)
+            except ValueError:
+                self.cold_spell = None
 
         self.load_trees()
         for subentry_id, data in (stored.get("trees") or {}).items():
@@ -182,6 +217,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                     "last_day": self.gdd.last_day,
                     "first_day": self.gdd.first_day,
                     "recent": self.gdd.recent,
+                    "start_month": self.gdd.start_month,
                 },
                 "pest_gdd": {
                     key: {
@@ -192,6 +228,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                         # Le détail journalier n'a d'intérêt que pour le
                         # cumul phénologique, affiché à l'utilisateur.
                         "recent": [],
+                        "start_month": state.start_month,
                     }
                     for key, state in self.pest_gdd.items()
                 },
@@ -206,6 +243,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                 "last_rain_check": (
                     self._last_rain_check.isoformat() if self._last_rain_check else None
                 ),
+                "cold_spell": self.cold_spell.isoformat() if self.cold_spell else None,
             }
         )
 
@@ -577,6 +615,15 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         en cours de saison démarre simplement plus tard, sans fausser
         les autres.
         """
+        current = season.season_year(
+            dt_util.now().date(), self.climate.season_start_month
+        )
+        self.gdd = phenology.roll_season(self.gdd, current)
+        self.pest_gdd = {
+            key: phenology.roll_season(state, current)
+            for key, state in self.pest_gdd.items()
+        }
+
         days: list[tuple[date, float | None, float | None]] = []
         for day, samples in complete_days(hourly):
             temps = [s.temp for s in samples if s.temp is not None]
@@ -589,8 +636,64 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         self.gdd = phenology.accumulate(self.gdd, days)
 
         for key, (base, upper) in pest_models.required_accumulators().items():
-            state = self.pest_gdd.get(key) or GddState(season_year=days[0][0].year)
+            state = self.pest_gdd.get(key) or self._new_gdd()
             self.pest_gdd[key] = phenology.accumulate(state, days, base, upper)
+
+    def _update_season(self, entry_data: dict, hourly: list[HourlySample]) -> None:
+        """Situe le site dans sa saison, à partir du lieu et du froid observé."""
+        means: list[tuple[date, float]] = []
+        for day, samples in complete_days(hourly):
+            temps = [s.temp for s in samples if s.temp is not None]
+            if temps:
+                means.append((day, sum(temps) / len(temps)))
+
+        start_month = self.climate.season_start_month
+        today = dt_util.now().date()
+        if self.cold_spell is None or season.season_year(
+            self.cold_spell, start_month
+        ) != season.season_year(today, start_month):
+            self.cold_spell = season.find_cold_spell(means, self.climate)
+
+        self.season = season.evaluate(
+            self.climate,
+            today,
+            self.cold_spell,
+            entry_data.get(CONF_SEASONAL_REST, DEFAULT_SEASONAL_REST),
+        )
+
+    @property
+    def season_phase(self) -> str:
+        """État exposé par le capteur de saison."""
+        if not self.climate.has_winter:
+            return season.PHASE_NO_WINTER
+        if not self.season.rest_enabled:
+            return season.PHASE_DISABLED
+        if self.season.in_rest or any(tree.resting for tree in self.trees.values()):
+            return season.PHASE_WINTER_REST
+        return season.PHASE_GROWING
+
+    def _apply_rest(self, now: datetime) -> None:
+        """Clôt la saison des arbres dont le repos est dû."""
+        for tree in self.trees.values():
+            changed_on = (
+                tree.stage_changed_at.date() if tree.stage_changed_at else None
+            )
+            due = season.rest_due(self.season, tree.rest_season, changed_on)
+            if due is None:
+                continue
+            previous = tree.stage
+            if tree.enter_rest(due, now):
+                self.pending_advances.append(
+                    {
+                        "subentry_id": tree.subentry_id,
+                        "tree": tree.display_name,
+                        "crop": tree.crop,
+                        "previous_stage": previous,
+                        "stage": tree.stage,
+                        "gdd": round(self.gdd.total, 1),
+                        "rest": True,
+                    }
+                )
 
     def _pest_total(self, pest: str) -> float | None:
         """Cumul saisonnier courant pour le barème d'un ravageur."""
@@ -666,6 +769,15 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             else:
                 since = total
 
+            if tree.resting:
+                # L'insecte passe l'hiver en diapause : ni jalon à afficher,
+                # ni biofix à réclamer avant le printemps.
+                risk = pest_models.evaluate_pest_risk(pest, 0.0)
+                if risk is not None:
+                    risk.awaiting_biofix = False
+                    results[pest] = risk
+                continue
+
             state = self.pest_gdd.get(pest_models.accumulator_key(definition))
             risk = pest_models.evaluate_pest_risk(
                 pest,
@@ -685,12 +797,25 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         l'utilisateur n'a pas désactivé l'automatisme.
         """
         self.pending_advances = []
+        self._apply_rest(now)
+
+        # Jusqu'au début de la saison suivante, le cumul est encore celui de
+        # l'année écoulée : il réveillerait aussitôt l'arbre qu'on vient
+        # d'endormir.
+        if self.season.in_rest:
+            return
+
         for tree in self.trees.values():
-            if not tree.auto_advance:
+            if tree.auto_advance:
+                proposed = phenology.propose_advance(
+                    tree.crop, tree.stage, self.gdd.total, tree.gdd_offset
+                )
+            elif tree.resting:
+                proposed = phenology.wake_stage(
+                    tree.crop, self.gdd.total, tree.gdd_offset
+                )
+            else:
                 continue
-            proposed = phenology.propose_advance(
-                tree.crop, tree.stage, self.gdd.total, tree.gdd_offset
-            )
             if proposed is None:
                 continue
 
@@ -756,6 +881,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             entry_data, max(HISTORY_HOURS, GDD_HISTORY_DAYS * 24)
         )
         self._update_gdd(hourly)
+        self._update_season(entry_data, hourly)
         self._advance_stages(now)
 
         # Fenêtre courte pour les modèles maladie.
@@ -793,9 +919,24 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             ):
                 # Le risque météo est identique pour tout le site ; seule
                 # la protection diffère d'un arbre à l'autre.
-                tree_results[MODEL_LATE_BLIGHT] = evaluate_late_blight_risk(recent)
+                #
+                # Au repos, le modèle répond quand même « aucun risque » : un
+                # résultat absent ferait disparaître l'entité au redémarrage.
+                tree_results[MODEL_LATE_BLIGHT] = (
+                    LateBlightRisk(level=RISK_NONE)
+                    if tree.resting
+                    else evaluate_late_blight_risk(recent)
+                )
 
-            if MODEL_POWDERY_MILDEW in enabled and MODEL_POWDERY_MILDEW in tree.models:
+            if (
+                MODEL_POWDERY_MILDEW in enabled
+                and MODEL_POWDERY_MILDEW in tree.models
+                and tree.resting
+            ):
+                tree_results[MODEL_POWDERY_MILDEW] = PowderyMildewRisk(
+                    level=RISK_NONE, index=tree.mildew_index
+                )
+            elif MODEL_POWDERY_MILDEW in enabled and MODEL_POWDERY_MILDEW in tree.models:
                 mildew = evaluate_powdery_mildew_risk(
                     recent,
                     index=tree.mildew_index,
@@ -822,6 +963,14 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
 
             self.protection[subentry_id] = tree_protection
             results[subentry_id] = tree_results
+
+        self.update_interval = timedelta(
+            minutes=(
+                REST_UPDATE_INTERVAL_MINUTES
+                if self.trees and all(tree.resting for tree in self.trees.values())
+                else DEFAULT_UPDATE_INTERVAL_MINUTES
+            )
+        )
 
         await self.async_save_state()
         return results

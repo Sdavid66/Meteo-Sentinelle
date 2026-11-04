@@ -30,6 +30,7 @@ from .const import (
     CONF_NOTIFICATIONS,
     CONF_RAIN_ENTITY,
     CONF_RAIN_PENALTY,
+    CONF_SEASONAL_REST,
     CONF_STAGE,
     CONF_TEMP_ENTITY,
     CONF_TREE_NAME,
@@ -41,10 +42,11 @@ from .const import (
     DEFAULT_GDD_OFFSET,
     DEFAULT_NAME,
     DEFAULT_NOTIFICATIONS,
+    DEFAULT_SEASONAL_REST,
     DOMAIN,
     SUBENTRY_TYPE_TREE,
 )
-from .models.crops import GENERIC_CROP, crop_options, stage_options
+from .models.crops import GENERIC_CROP, crop_options, default_stage, stage_options
 
 def _optional_entity(key: str, defaults: dict, **selector_kwargs):
     """Sélecteur d'entité facultatif, sans valeur par défaut fantôme."""
@@ -107,6 +109,13 @@ def _site_schema(defaults: dict | None = None) -> dict:
 
     schema[
         vol.Required(
+            CONF_SEASONAL_REST,
+            default=defaults.get(CONF_SEASONAL_REST, DEFAULT_SEASONAL_REST),
+        )
+    ] = selector.BooleanSelector()
+
+    schema[
+        vol.Required(
             CONF_NOTIFICATIONS,
             default=defaults.get(CONF_NOTIFICATIONS, DEFAULT_NOTIFICATIONS),
         )
@@ -160,8 +169,8 @@ def _tree_schema(crop: str | None = None, defaults: dict | None = None) -> vol.S
 
     stages = stage_options(crop)
     if stages:
-        default_stage = defaults.get(CONF_STAGE) or stages[0]
-        schema[vol.Required(CONF_STAGE, default=default_stage)] = (
+        initial_stage = defaults.get(CONF_STAGE) or default_stage(crop)
+        schema[vol.Required(CONF_STAGE, default=initial_stage)] = (
             selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=stages,

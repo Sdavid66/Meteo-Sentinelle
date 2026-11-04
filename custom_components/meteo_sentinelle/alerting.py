@@ -264,10 +264,17 @@ def process_stage_advances(
                         stage=stage_label,
                         gdd=advance["gdd"],
                     ),
-                    tr.text("notify_stage_advice"),
+                    tr.text(
+                        "notify_rest_advice"
+                        if advance.get("rest")
+                        else "notify_stage_advice"
+                    ),
                 )
             ),
-            title=tr.text("notify_stage_title", tree=advance["tree"]),
+            title=tr.text(
+                "notify_rest_title" if advance.get("rest") else "notify_stage_title",
+                tree=advance["tree"],
+            ),
             notification_id=f"{DOMAIN}_{advance['subentry_id']}_stage",
         )
     coordinator.pending_advances = []

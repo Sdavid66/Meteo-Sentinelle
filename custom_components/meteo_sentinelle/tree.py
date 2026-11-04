@@ -22,7 +22,7 @@ from .const import (
     DEFAULT_GDD_OFFSET,
     MODEL_FROST,
 )
-from .models.crops import CROPS, GENERIC_CROP, STAGE_LABELS
+from .models.crops import CROPS, GENERIC_CROP, REST_STAGES, STAGE_LABELS, rest_stage
 
 
 @dataclass
@@ -51,6 +51,10 @@ class Tree:
     #: permet d'en déduire le cumul depuis le biofix par simple
     #: soustraction, sans jamais relire l'historique.
     biofix: dict[str, dict] = field(default_factory=dict)
+    #: Dernière saison dont le repos hivernal a été appliqué. Le repos n'a
+    #: lieu qu'une fois par saison : une correction manuelle en plein hiver
+    #: n'est donc pas réécrasée au cycle suivant.
+    rest_season: int | None = None
 
     @classmethod
     def from_subentry(cls, subentry_id: str, data: dict) -> "Tree":
@@ -79,6 +83,7 @@ class Tree:
             "mildew_last_day": self.mildew_last_day,
             "last_levels": dict(self.last_levels),
             "biofix": {key: dict(value) for key, value in self.biofix.items()},
+            "rest_season": self.rest_season,
         }
 
     def restore_state(self, data: dict) -> None:
@@ -100,6 +105,37 @@ class Tree:
             for key, value in (data.get("biofix") or {}).items()
             if isinstance(value, dict)
         }
+        self.rest_season = data.get("rest_season")
+
+    # --- Saison ---
+
+    @property
+    def resting(self) -> bool:
+        """La plante est au repos : le stade fait seul foi."""
+        return self.stage in REST_STAGES
+
+    def enter_rest(self, season: int, now: datetime) -> bool:
+        """Clôt la saison de cet arbre. Renvoie True si le stade a changé.
+
+        Tout ce qui se cumule sur une saison repart de zéro : l'indice
+        oïdium, le biofix et la floraison de l'an passé fausseraient ceux
+        de l'an prochain. Une culture sans stade de repos garde le sien et
+        continue d'être surveillée.
+        """
+        self.rest_season = season
+        self.mildew_index = 0
+        self.mildew_started = False
+        self.mildew_last_day = None
+        self.biofix = {}
+        self.bloom_date = None
+
+        target = rest_stage(self.crop)
+        if target is None or self.stage == target:
+            return False
+        self.stage = target
+        self.stage_auto_applied = True
+        self.stage_changed_at = now
+        return True
 
     # --- Présentation ---
 

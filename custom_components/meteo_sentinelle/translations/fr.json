@@ -14,6 +14,7 @@
           "weather_entity": "Entité météo pour les prévisions (ex. MeteoSwiss)",
           "enabled_models": "Modèles de risque à activer",
           "powdery_mildew_rain_penalty": "Oïdium : tenir compte de l'effet inhibiteur de la pluie",
+          "seasonal_rest": "Repos hivernal : mettre arbres et cultures au repos selon la saison du lieu défini dans Home Assistant",
           "notifications": "Créer des notifications dans Home Assistant",
           "assist_sentences": "Installer les commandes vocales pour Assist"
         }
@@ -81,6 +82,7 @@
           "weather_entity": "Entité météo pour les prévisions (ex. MeteoSwiss)",
           "enabled_models": "Modèles de risque à activer",
           "powdery_mildew_rain_penalty": "Oïdium : tenir compte de l'effet inhibiteur de la pluie",
+          "seasonal_rest": "Repos hivernal : mettre arbres et cultures au repos selon la saison du lieu défini dans Home Assistant",
           "notifications": "Créer des notifications dans Home Assistant",
           "assist_sentences": "Installer les commandes vocales pour Assist",
           "fallback_temperature_entity": "Température de secours (MeteoSwiss)",
@@ -135,7 +137,8 @@
           "dormant": "Dormance",
           "bud_swell": "Bourgeon gonflé",
           "first_leaves": "Premières feuilles",
-          "shoots_10cm": "Rameaux 10 cm"
+          "shoots_10cm": "Rameaux 10 cm",
+          "off_season": "Hors saison"
         }
       }
     },
@@ -235,7 +238,8 @@
           "dormant": "Dormance",
           "bud_swell": "Bourgeon gonflé",
           "first_leaves": "Premières feuilles",
-          "shoots_10cm": "Rameaux 10 cm"
+          "shoots_10cm": "Rameaux 10 cm",
+          "off_season": "Hors saison"
         }
       },
       "powdery_mildew_index": {
@@ -272,6 +276,15 @@
           "meteoswiss": "Station officielle",
           "mixed": "Sources mixtes",
           "unavailable": "Indisponible"
+        }
+      },
+      "season": {
+        "name": "Saison",
+        "state": {
+          "growing": "Saison de végétation",
+          "winter_rest": "Repos hivernal",
+          "no_winter": "Pas d'hiver (tropiques)",
+          "disabled": "Désactivé"
         }
       }
     },
@@ -426,7 +439,8 @@
         "dormant": "Dormance",
         "bud_swell": "Bourgeon gonflé",
         "first_leaves": "Premières feuilles",
-        "shoots_10cm": "Rameaux 10 cm"
+        "shoots_10cm": "Rameaux 10 cm",
+        "off_season": "Hors saison"
       }
     },
     "enabled_models": {
@@ -467,6 +481,8 @@
     "notify_stage_title": "{tree} — stade avancé automatiquement",
     "notify_stage_change": "Le stade est passé de {previous} à {stage}, d'après le cumul de degrés-jours ({gdd} °C·j).",
     "notify_stage_advice": "Ce changement a été appliqué automatiquement et modifie les seuils de gel utilisés pour cet arbre. Si l'observation sur place ne correspond pas, corrigez le stade depuis l'entité de stade phénologique : votre correction fait autorité. Vous pouvez aussi désactiver l'avancement automatique pour cet arbre.",
+    "notify_rest_title": "{tree} — repos hivernal",
+    "notify_rest_advice": "La saison est terminée à votre emplacement : les modèles maladie et ravageurs sont suspendus pour cet arbre et ses compteurs saisonniers ont été remis à zéro. Ils reprendront d'eux-mêmes lorsque la chaleur accumulée au printemps sera suffisante. Si l'observation sur place ne correspond pas, corrigez le stade : votre correction fait autorité.",
     "stage_not_set": "non renseigné",
     "detail_frost_min_air": "minimum attendu {temperature} °C sous abri",
     "detail_frost_min_ground": "minimum attendu {temperature} °C au niveau du sol",
