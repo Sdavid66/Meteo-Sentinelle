@@ -152,6 +152,27 @@ function discoverEntities(hass) {
   });
 }
 
+/**
+ * Nom affiché d'une entité : « Pommier Risque de gel ».
+ *
+ * `friendly_name` est appelé à être déprécié au profit des noms du registre.
+ * L'assistant n'existe que depuis Home Assistant 2026.4 et renvoie un texte
+ * vide si le registre ne connaît pas l'entité, d'où le repli.
+ */
+function entityLabel(hass, entityId, state) {
+  let name = "";
+  try {
+    name = hass.formatEntityName?.(
+      state,
+      [{ type: "device" }, { type: "entity" }],
+      { separator: " " }
+    );
+  } catch (err) {
+    name = "";
+  }
+  return name || state.attributes?.friendly_name || entityId;
+}
+
 function sprayEntity(hass) {
   for (const [entityId, state] of Object.entries(hass.states)) {
     if (!entityId.startsWith("sensor.")) continue;
@@ -333,7 +354,7 @@ class MeteoSentinelleCard extends HTMLElement {
         return `
           <div class="row" data-entity="${entityId}">
             <div class="label">
-              <span class="name">${attributes.friendly_name || entityId}</span>
+              <span class="name">${entityLabel(this._hass, entityId, state)}</span>
               <span class="sub">${detail}</span>
             </div>
             <div class="track">${bars}${projected}</div>

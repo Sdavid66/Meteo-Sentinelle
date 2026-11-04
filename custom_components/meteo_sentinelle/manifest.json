@@ -4,6 +4,10 @@
   "after_dependencies": [
     "recorder"
   ],
+  "categories": [
+    "garden_plants",
+    "weather_alerts"
+  ],
   "codeowners": [
     "@Sdavid66"
   ],

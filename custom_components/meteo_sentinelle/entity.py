@@ -62,18 +62,22 @@ class MeteoSentinelleTreeEntity(CoordinatorEntity):
         super().__init__(coordinator)
         self._entry = entry
         self._subentry_id = tree.subentry_id
-        device_info = DeviceInfo(
+        # Le lien vers le site est passé au constructeur : `DeviceInfo` est une
+        # dataclass depuis 2026.11, et son accès façon dictionnaire est appelé
+        # à disparaître. Cette forme vaut aussi pour l'ancien TypedDict.
+        via: dict = {}
+        site_device_id = getattr(coordinator, "site_device_id", None)
+        if not _SUPPORTS_VIA_DEVICE_ID:
+            via["via_device"] = (DOMAIN, entry.entry_id)
+        elif site_device_id is not None:
+            via["via_device_id"] = site_device_id
+        self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_{tree.subentry_id}")},
             name=tree.display_name,
             manufacturer=MANUFACTURER,
             model=tree.crop_label,
+            **via,
         )
-        site_device_id = getattr(coordinator, "site_device_id", None)
-        if not _SUPPORTS_VIA_DEVICE_ID:
-            device_info["via_device"] = (DOMAIN, entry.entry_id)
-        elif site_device_id is not None:
-            device_info["via_device_id"] = site_device_id
-        self._attr_device_info = device_info
 
     @property
     def tree(self) -> Tree | None:
