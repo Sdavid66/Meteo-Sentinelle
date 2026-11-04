@@ -367,9 +367,23 @@ l'intégration ; les arbres se modifient depuis leur propre entrée.
 ## Carte de tableau de bord
 
 Une carte est livrée **avec l'intégration** : aucun dépôt HACS
-supplémentaire, aucune ressource Lovelace à déclarer. Elle apparaît dans
-le sélecteur de cartes sous « Météo Sentinelle » dès l'installation, et
-se met à jour en même temps que le composant.
+supplémentaire, aucune ressource Lovelace à déclarer, et elle se met à
+jour en même temps que le composant.
+
+Elle ne s'ajoute **pas toute seule** à vos tableaux de bord :
+
+1. après l'installation, videz le cache du navigateur ou forcez le
+   rechargement de la page (Ctrl+F5, ou Cmd+Maj+R sur Mac). Sur
+   l'application mobile, videz le cache dans ses paramètres ;
+2. passez le tableau de bord en mode édition, choisissez « Ajouter une
+   carte » et cherchez « Météo Sentinelle ».
+
+Si elle n'apparaît pas dans la liste, choisissez la carte « Manuel » et
+collez :
+
+```yaml
+type: custom:meteo-sentinelle-card
+```
 
 Elle affiche une chronologie continue coupée par un repère
 « maintenant » : à gauche l'historique des niveaux de risque, à droite

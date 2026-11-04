@@ -352,9 +352,21 @@ integration; trees are edited from their own entry.
 ## Dashboard card
 
 A card ships **with the integration**: no extra HACS repository, no
-Lovelace resource to declare. It shows up in the card picker under
-"Météo Sentinelle" as soon as the integration is installed, and updates
-alongside the component.
+Lovelace resource to declare, and it updates alongside the component.
+
+It is **not added to your dashboards automatically**:
+
+1. after installing, clear your browser cache or force a page reload
+   (Ctrl+F5, or Cmd+Shift+R on a Mac). In the mobile app, clear the cache
+   from its settings;
+2. put the dashboard in edit mode, choose "Add card" and search for
+   "Météo Sentinelle".
+
+If it is not in the list, pick the "Manual" card and paste:
+
+```yaml
+type: custom:meteo-sentinelle-card
+```
 
 It draws one continuous timeline split by a "now" marker: risk level
 history on the left, upcoming spray windows and the next forecast frost
