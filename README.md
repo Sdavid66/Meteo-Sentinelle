@@ -379,7 +379,7 @@ The card answers one question first: do I need to do something, and when?
 <p align="center">
   <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-detail-en.png" alt="A tree's detail in dark theme: season path, frost gauge and risks" width="420">
 </p>
-<p align="center"><em>A tree's detail, here in dark theme. Sample data.</em></p>
+<p align="center"><em>A tree's detail. Sample data.</em></p>
 
 - **A banner** states the most urgent risk in one sentence, the trees
   concerned and when to act. When nothing is urgent, it announces the next

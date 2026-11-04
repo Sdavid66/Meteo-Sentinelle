@@ -397,7 +397,7 @@ chose, et quand ?
 <p align="center">
   <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-detail.png" alt="Le détail d'un arbre en thème sombre : parcours de la saison, jauge de gel et risques" width="420">
 </p>
-<p align="center"><em>Le détail d'un arbre, ici en thème sombre. Données d'exemple.</em></p>
+<p align="center"><em>Le détail d'un arbre. Données d'exemple.</em></p>
 
 - **Un bandeau** dit en une phrase le risque le plus urgent, les arbres
   concernés et quand agir. Quand rien ne presse, il annonce la prochaine
