@@ -34,7 +34,7 @@ traitement préventif...).
 Il ne s'arrête pas au diagnostic : une **fenêtre de pulvérisation** vous
 dit quand le vent et la pluie prévus permettent réellement de traiter,
 une **carte de tableau de bord** livrée avec l'intégration donne la
-chronologie du verger d'un coup d'œil, et des **commandes vocales**
+situation du verger d'un coup d'œil, et des **commandes vocales**
 (Assist) répondent à « est-ce que je peux traiter demain ? » directement
 à la voix.
 
@@ -385,14 +385,46 @@ collez :
 type: custom:meteo-sentinelle-card
 ```
 
-Elle affiche une chronologie continue coupée par un repère
-« maintenant » : à gauche l'historique des niveaux de risque, à droite
-les fenêtres de traitement à venir et la prochaine gelée annoncée. Un
-clic sur une ligne ouvre l'entité correspondante.
+La carte répond d'abord à une question : est-ce que je dois faire quelque
+chose, et quand ?
 
-Les entités sont détectées automatiquement ; l'éditeur visuel permet de
-changer le titre, la profondeur d'historique et, au besoin, de fixer une
-liste d'entités.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-preview.png" alt="La carte en plein été : un bandeau dit ce qui presse, et chaque arbre est dessiné à son stade, avec ce qui le menace" width="420">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-detail.png" alt="Le détail d'un arbre en thème sombre : parcours de la saison, jauge de gel et risques" width="420">
+</p>
+
+- **Un bandeau** dit en une phrase le risque le plus urgent, les arbres
+  concernés et quand agir. Quand rien ne presse, il annonce la prochaine
+  étape. L'hiver, il indique que le verger se repose.
+- **Chaque arbre est une petite scène** qui suit son stade : bois nu,
+  bourgeons, feuilles, boutons, fleurs, fruits qui grossissent et mûrissent.
+  Les menaces s'y voient : neige et nuit froide pour le gel, champignons au
+  pied pour l'oïdium et le mildiou, insectes pour les ravageurs. Fruits et
+  couleurs de floraison dépendent de l'espèce.
+- **Toucher un arbre ouvre son détail** : les stades où le gel est le plus
+  dangereux, la température prévue face aux seuils de dégâts, l'indice
+  oïdium, le cycle du ravageur et les jalons où intervenir.
+- **Les gestes se déclarent depuis la carte** : « J'ai traité » et « Première
+  capture aujourd'hui », avec une seconde pression pour confirmer. Le lien
+  « Corriger le stade » ouvre l'entité du stade.
+- **Les fenêtres de traitement** des 48 prochaines heures sont affichées en
+  bas. Le message retient le premier créneau entre 7 h et 21 h.
+
+La carte suit le thème clair ou sombre et la langue de Home Assistant
+(français et anglais). Les arbres sont détectés automatiquement. L'éditeur
+visuel permet de changer le titre, de choisir les arbres affichés et de
+masquer les fenêtres de traitement :
+
+```yaml
+type: custom:meteo-sentinelle-card
+title: Le verger du fond
+show_spray: false
+```
+
+Passé le dernier stade suivi, le dessin et le libellé « Fruits en croissance »
+se déduisent de la date de floraison, ou à défaut de la chaleur reçue. Les
+délais en jours (« dans ~5 j ») extrapolent la chaleur des sept derniers jours.
+Ce sont des ordres de grandeur.
 
 ## Commandes vocales (Assist)
 

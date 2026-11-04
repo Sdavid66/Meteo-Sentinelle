@@ -24,5 +24,8 @@ jobs:
       - name: Exécuter la suite de tests ravageurs et pulvérisation
         run: python tests/test_pests.py
 
+      - name: Exécuter les tests de la carte
+        run: node tests/test_card.js
+
       - name: Contrôler la structure de l'intégration
         run: python scripts/check_integration.py .

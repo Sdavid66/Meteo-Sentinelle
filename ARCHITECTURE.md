@@ -441,6 +441,20 @@ Contraintes respectées pour le format `brand/` : PNG carré, canal
 alpha, détouré sans marge transparente, 256 px et 512 px — les mêmes
 exigences que `home-assistant/brands`, seul l'emplacement change.
 
+### Carte : une scène par arbre
+
+La carte répond à « dois-je faire quelque chose, et quand ? » avant de montrer
+des données : un bandeau, puis une scène dessinée par arbre, le détail n'arrivant
+qu'au toucher. Les dessins sont générés en SVG à partir du stade et de l'espèce,
+avec un aléa dont la graine est l'identifiant de l'arbre : chaque arbre garde sa
+silhouette d'un rafraîchissement à l'autre.
+
+Elle ne recopie aucune table agronomique : stades, seuils et cycles viennent des
+attributs des capteurs (`stages`, `model`, `next_stage_key`). `hass` change à
+chaque état du système, donc elle ne se redessine que si l'un de ses capteurs a
+changé. `tests/card_demo.html` l'affiche sans Home Assistant, sur les scénarios
+de `tests/card_fixtures.js`, que `tests/test_card.js` parcourt aussi.
+
 ### Saisons : le stade porte l'état de repos
 
 `models/season.py` déduit du lieu (`hass.config.latitude`, `elevation`) le

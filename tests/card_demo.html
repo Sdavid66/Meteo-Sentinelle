@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Démo de la carte Météo Sentinelle</title>
+<style>
+  :root { --primary-text-color:#212121; --secondary-text-color:#6b7076; --primary-color:#03a9f4; --divider-color:#e0e0e0; --card-background-color:#fff; --ha-card-background:#fff; --secondary-background-color:#f3f4f5; --text-primary-color:#fff; }
+  body.dark { --primary-text-color:#e6e8ea; --secondary-text-color:#a0a6ad; --primary-color:#4fc3f7; --divider-color:#3a3d41; --card-background-color:#1c1e20; --ha-card-background:#1c1e20; --secondary-background-color:#26292c; }
+  body { margin:0; padding:16px; background:#eef0f2; color:var(--primary-text-color); font-family:Roboto,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:14px; }
+  body.dark { background:#101214; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 14px; }
+  select, button { font:inherit; padding:5px 10px; border-radius:8px; border:1px solid var(--divider-color); background:var(--card-background-color); color:inherit; }
+  #stage { margin:0 auto; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <select id="scene"></select>
+  <select id="width"><option value="360">Mobile 360</option><option value="500" selected>Colonne 500</option><option value="820">Large 820</option></select>
+  <select id="lang"><option value="fr">Français</option><option value="en">English</option></select>
+  <button id="dark">Sombre / clair</button>
+</div>
+<div id="stage"></div>
+<script>
+  // Le vrai ha-card porte son fond dans son propre shadow DOM.
+  customElements.define("ha-card", class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: "open" }).innerHTML =
+        "<style>:host{display:block;background:var(--ha-card-background);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.14)}</style><slot></slot>";
+    }
+  });
+</script>
+<script src="card_fixtures.js"></script>
+<script src="../custom_components/meteo_sentinelle/frontend/meteo-sentinelle-card.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const $ = (id) => document.getElementById(id);
+  const names = Object.keys(window.CARD_SCENARIOS);
+  $("scene").innerHTML = names.map((name, i) => `<option value="${i}">${name}</option>`).join("");
+  $("scene").value = params.get("s") || 0;
+  $("width").value = params.get("w") || 500;
+  $("lang").value = params.get("l") || "fr";
+  let dark = params.get("d") === "1";
+
+  let card;
+  function show() {
+    document.body.classList.toggle("dark", dark);
+    const stage = $("stage");
+    stage.style.maxWidth = `${$("width").value}px`;
+    stage.innerHTML = "";
+    card = document.createElement("meteo-sentinelle-card");
+    card.setConfig({ type: "custom:meteo-sentinelle-card" });
+    stage.appendChild(card);
+    card.hass = window.CARD_SCENARIOS[names[$("scene").value]]({ lang: $("lang").value, dark });
+    const open = params.get("o");
+    if (open) card.shadowRoot.querySelector(`[data-tree="${open}"]`)?.click();
+  }
+  for (const id of ["scene", "width", "lang"]) $(id).addEventListener("change", show);
+  $("dark").addEventListener("click", () => { dark = !dark; show(); });
+  show();
+</script>
+</body>
+</html>

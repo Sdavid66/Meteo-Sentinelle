@@ -33,7 +33,7 @@ switching on a frost cover, preventive treatment...).
 
 It doesn't stop at diagnosis: a **spray window** tells you when the
 forecast wind and rain actually allow treating, a **dashboard card**
-shipped with the integration gives the orchard's timeline at a glance,
+shipped with the integration shows the orchard's situation at a glance,
 and **voice commands** (Assist) answer "can I spray tomorrow?" directly.
 
 ## Which weather station?
@@ -368,13 +368,44 @@ If it is not in the list, pick the "Manual" card and paste:
 type: custom:meteo-sentinelle-card
 ```
 
-It draws one continuous timeline split by a "now" marker: risk level
-history on the left, upcoming spray windows and the next forecast frost
-on the right. Clicking a row opens the matching entity.
+The card answers one question first: do I need to do something, and when?
 
-Entities are detected automatically; the visual editor lets you change
-the title, the history depth and, if needed, pin an explicit entity
-list.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-preview.png" alt="The card in midsummer: a banner states what is urgent, and each tree is drawn at its stage with what threatens it" width="420">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-detail.png" alt="A tree's detail in dark theme: season path, frost gauge and risks" width="420">
+</p>
+
+- **A banner** states the most urgent risk in one sentence, the trees
+  concerned and when to act. When nothing is urgent, it announces the next
+  step. In winter, it says the orchard is resting.
+- **Each tree is a small scene** that follows its stage: bare wood, buds,
+  leaves, flower buds, blossom, fruit growing and ripening. Threats are visible
+  in it: snow and a cold night for frost, mushrooms at the foot for powdery
+  mildew and late blight, insects for pests. Fruit and blossom colours depend
+  on the species.
+- **Tapping a tree opens its detail**: the stages where frost is most dangerous,
+  the forecast temperature against the damage thresholds, the powdery mildew
+  index, the pest's cycle and the milestones to act on.
+- **Actions are declared from the card**: "I sprayed" and "First catch today",
+  with a second tap to confirm. The "Correct the stage" link opens the stage
+  entity.
+- **Spray windows** for the next 48 hours are shown at the bottom. The message
+  picks the first slot between 7 am and 9 pm.
+
+The card follows Home Assistant's light or dark theme and language (English and
+French). Trees are detected automatically. The visual editor lets you change the
+title, choose the trees shown and hide spray windows:
+
+```yaml
+type: custom:meteo-sentinelle-card
+title: The back orchard
+show_spray: false
+```
+
+Past the last tracked stage, the drawing and the "Fruit growing" label come
+from the bloom date or, failing that, the heat received. Delays in days ("in
+~5 d") extrapolate the heat of the last seven days. They are orders of
+magnitude.
 
 ## Voice commands (Assist)
 

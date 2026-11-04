@@ -108,6 +108,9 @@ class RiskSensor(MeteoSentinelleTreeEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = RISK_LEVELS
+    #: Tables de référence et détail journalier : utiles à l'affichage, sans
+    #: intérêt dans l'historique, où ils se répéteraient à chaque changement.
+    _unrecorded_attributes = frozenset({"stages", "days"})
 
     def __init__(self, coordinator, entry: ConfigEntry, tree: Tree, model_key: str) -> None:
         super().__init__(coordinator, entry, tree)
@@ -132,10 +135,16 @@ class RiskSensor(MeteoSentinelleTreeEntity, SensorEntity):
         tree = self.tree
         if tree is not None:
             attributes["tree"] = tree.display_name
+            attributes["tree_name"] = tree.name
+            attributes["subentry_id"] = tree.subentry_id
             attributes["crop"] = tree.crop
             attributes["stage"] = tree.stage
             attributes["stage_label"] = tree.stage_label
             attributes["resting"] = tree.resting
+        # Clé technique stable, pour que la carte sache de quel risque il
+        # s'agit sans dépendre du nom affiché, qui change avec la langue.
+        attributes["model"] = self._model_key
+        attributes["site_id"] = self._entry.entry_id
         attributes["sources"] = dict(getattr(self.coordinator, "sources", {}))
         protection = self.coordinator.tree_protection(self._subentry_id, self._model_key)
         if protection:
@@ -154,6 +163,7 @@ class StageSensor(MeteoSentinelleTreeEntity, SensorEntity):
     _attr_icon = "mdi:flower-outline"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_translation_key = "phenology_stage"
+    _unrecorded_attributes = frozenset({"stages"})
 
     def __init__(self, coordinator, entry: ConfigEntry, tree: Tree) -> None:
         super().__init__(coordinator, entry, tree)
@@ -181,9 +191,14 @@ class StageSensor(MeteoSentinelleTreeEntity, SensorEntity):
 
         attributes: dict = {
             "tree": tree.display_name,
+            "tree_name": tree.name,
+            "subentry_id": tree.subentry_id,
+            "site_id": self._entry.entry_id,
             "crop": tree.crop,
             "crop_label": tree.crop_label,
             "stage_key": tree.stage,
+            "stages": phenology.stage_path(tree.crop),
+            "bloom_to_harvest_days": phenology.BLOOM_TO_HARVEST_DAYS.get(tree.crop),
             "auto_advance": tree.auto_advance,
             "resting": tree.resting,
             "last_change_automatic": tree.stage_auto_applied,
@@ -196,6 +211,7 @@ class StageSensor(MeteoSentinelleTreeEntity, SensorEntity):
         if following is not None:
             next_stage, threshold = following
             attributes["next_stage"] = STAGE_LABELS.get(next_stage, next_stage)
+            attributes["next_stage_key"] = next_stage
             attributes["next_stage_gdd"] = threshold
             attributes["gdd_to_next_stage"] = round(
                 max(0.0, threshold - (gdd.total + tree.gdd_offset)), 1
@@ -288,6 +304,7 @@ class GddSensor(MeteoSentinelleSiteEntity, SensorEntity):
     def extra_state_attributes(self) -> dict:
         gdd = self.coordinator.gdd
         return {
+            "site_id": self._entry.entry_id,
             "season_year": gdd.season_year,
             "base_temperature": phenology.GDD_BASE_C,
             "first_day": gdd.first_day,
@@ -321,6 +338,7 @@ class SeasonSensor(MeteoSentinelleSiteEntity, SensorEntity):
         info = self.coordinator.season
         climate = self.coordinator.climate
         return {
+            "site_id": self._entry.entry_id,
             "hemisphere": info.hemisphere,
             "latitude": climate.latitude,
             "elevation": climate.elevation,
@@ -371,6 +389,7 @@ class SprayWindowSensor(MeteoSentinelleSiteEntity, SensorEntity):
             return {}
         data = advice.as_dict()
         data["open_now"] = advice.current is not None
+        data["site_id"] = self._entry.entry_id
         return data
 
 

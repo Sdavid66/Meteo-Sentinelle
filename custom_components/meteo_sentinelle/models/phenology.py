@@ -34,7 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from .crops import REST_STAGES
+from .crops import CROPS, REST_STAGES, stage_options
 from .season import season_year as _season_year
 
 #: Température de base des degrés-jours arbres fruitiers (42 °F).
@@ -284,6 +284,27 @@ def stage_for_gdd(crop: str, gdd_total: float, offset: float = 0.0) -> str | Non
     effective = gdd_total + offset
     reached = [stage for stage in ordered_stages(crop) if effective >= table[stage]]
     return reached[-1] if reached else None
+
+
+def stage_path(crop: str) -> list[dict]:
+    """Stades d'une espèce dans l'ordre, avec leur seuil et leur sensibilité.
+
+    C'est ce qu'il faut pour montrer où en est l'arbre et à quels moments
+    le gel est dangereux, sans recopier les tables dans la carte.
+    """
+    table = STAGE_GDD.get(crop, {})
+    entry = CROPS.get(crop)
+    path: list[dict] = []
+    for stage in stage_options(crop):
+        limits = entry.stages.get(stage) if entry else None
+        path.append(
+            {
+                "key": stage,
+                "gdd": table.get(stage),
+                "t10": limits[0] if limits else None,
+            }
+        )
+    return path
 
 
 def next_stage_threshold(crop: str, stage: str | None) -> tuple[str, float] | None:

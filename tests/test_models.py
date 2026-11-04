@@ -512,6 +512,17 @@ check(_south.season_year == 2027 and abs(_south.total - 4.4) < 1e-6,
       "le cumul repart au 1er juillet")
 check(_south.complete_season, "et couvre bien le début de la saison australe")
 
+# Parcours d'une espèce, lu par la carte : tout vient des tables du plugin.
+_path = phenology.stage_path("apple")
+check(_path[0]["key"] == crops.DORMANT and _path[-1]["key"] == "full_bloom",
+      "le parcours va du repos à la floraison")
+check(_path[-1]["gdd"] == 500 and _path[-1]["t10"] == -2.2,
+      "chaque stade porte son seuil de chaleur et sa sensibilité au gel")
+_annual = phenology.stage_path("tender_annual")
+check(_annual[0] == {"key": crops.OFF_SEASON, "gdd": None, "t10": None},
+      "le hors saison n'a ni seuil de chaleur ni sensibilité au gel")
+check(phenology.stage_path("generic") == [], "culture générique : pas de parcours")
+
 # Passage de saison : ni réveil au 1er janvier, ni retour en arrière.
 _old = phenology.GddState(season_year=2026, total=1800.0, last_day="2026-12-31")
 _rolled = phenology.roll_season(_old, 2027)
