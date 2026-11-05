@@ -55,6 +55,10 @@ class Tree:
     #: lieu qu'une fois par saison : une correction manuelle en plein hiver
     #: n'est donc pas réécrasée au cycle suivant.
     rest_season: int | None = None
+    #: Recalage dû à une correction manuelle du stade, valable pour la saison
+    #: où elle a été faite : le cumul repart de zéro à la suivante.
+    stage_shift: float = 0.0
+    stage_shift_season: int | None = None
 
     @classmethod
     def from_subentry(cls, subentry_id: str, data: dict) -> "Tree":
@@ -84,6 +88,8 @@ class Tree:
             "last_levels": dict(self.last_levels),
             "biofix": {key: dict(value) for key, value in self.biofix.items()},
             "rest_season": self.rest_season,
+            "stage_shift": self.stage_shift,
+            "stage_shift_season": self.stage_shift_season,
         }
 
     def restore_state(self, data: dict) -> None:
@@ -106,8 +112,18 @@ class Tree:
             if isinstance(value, dict)
         }
         self.rest_season = data.get("rest_season")
+        self.stage_shift = float(data.get("stage_shift", 0.0))
+        self.stage_shift_season = data.get("stage_shift_season")
 
     # --- Saison ---
+
+    def shift_for(self, season: int) -> float:
+        """Recalage manuel de l'arbre pour cette saison."""
+        return self.stage_shift if self.stage_shift_season == season else 0.0
+
+    def effective_offset(self, season: int) -> float:
+        """Écart à ajouter au cumul du site pour situer cet arbre."""
+        return self.gdd_offset + self.shift_for(season)
 
     @property
     def resting(self) -> bool:
@@ -123,6 +139,8 @@ class Tree:
         continue d'être surveillée.
         """
         self.rest_season = season
+        self.stage_shift = 0.0
+        self.stage_shift_season = None
         self.mildew_index = 0
         self.mildew_started = False
         self.mildew_last_day = None

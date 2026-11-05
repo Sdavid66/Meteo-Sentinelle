@@ -27,5 +27,10 @@ jobs:
       - name: Exécuter les tests de la carte
         run: node tests/test_card.js
 
+      # Le fichier est servi sans compilation : un `?.` suffit à le rendre
+      # illisible pour le WebView d'un écran mural sous Android 8.
+      - name: Vérifier que la carte reste lisible par les vieux navigateurs
+        run: npx --yes acorn@8 --ecma2017 --silent custom_components/meteo_sentinelle/frontend/meteo-sentinelle-card.js
+
       - name: Contrôler la structure de l'intégration
         run: python scripts/check_integration.py .

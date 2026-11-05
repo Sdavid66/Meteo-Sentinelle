@@ -215,8 +215,8 @@ When a threshold is crossed, the stage is **advanced and applied
 automatically**, and you are told about it — notification and event.
 Three safeguards:
 
-- **your correction wins.** Change the stage by hand from the `select`
-  and it becomes the new reference;
+- **your correction wins.** Change the stage from the card or the `select`:
+  it becomes the season's new reference, and tracking resumes from there;
 - **advancement is monotonic within a season.** The model never moves a
   stage backwards: a warm spell does not "undo" an observed bloom. Only
   winter rest resets the cycle;
@@ -393,13 +393,14 @@ The card answers one question first: do I need to do something, and when?
   the forecast temperature against the damage thresholds, the powdery mildew
   index, the pest's cycle and the milestones to act on.
 - **Actions are declared from the card**: "I sprayed" and "First catch today",
-  with a second tap to confirm. The "Correct the stage" link opens the stage
-  entity.
+  with a second tap to confirm. If the tree isn't where the model thinks it is,
+  the "Observed stage" list corrects it.
 - **Spray windows** for the next 48 hours are shown at the bottom. The message
   picks the first slot between 7 am and 9 pm.
 
 The card follows Home Assistant's light or dark theme and language (English and
-French). Trees are detected automatically. The visual editor lets you change the
+French). It is written to also work on wall panels with an old browser, such as
+the NSPanel Pro. Trees are detected automatically. The visual editor lets you change the
 title, choose the trees shown and hide spray windows:
 
 ```yaml

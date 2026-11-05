@@ -56,7 +56,15 @@ function load() {
       }
     },
   });
-  vm.runInContext(fs.readFileSync(CARD, "utf8"), context);
+  // La fonction englobante de la carte cache ses fonctions : on la retire ici
+  // pour les tester directement.
+  const source = fs.readFileSync(CARD, "utf8");
+  const opening = "(function () {\n";
+  const closing = "\n})();\n";
+  if (!source.includes(opening) || !source.endsWith(closing)) {
+    throw new Error("ÉCHEC : la carte doit rester enveloppée dans une fonction");
+  }
+  vm.runInContext(source.replace(opening, "").slice(0, -closing.length), context);
   vm.runInContext(fs.readFileSync(path.join(ROOT, "tests/card_fixtures.js"), "utf8"), context);
   return {
     context,
@@ -127,9 +135,28 @@ check(
   "le français et l'anglais ont exactement les mêmes textes"
 );
 
+console.log("\n--- vieux navigateurs ---");
+const cardSource = fs.readFileSync(CARD, "utf8");
+const cardStyle = cardSource.slice(cardSource.indexOf("const CARD_STYLE"));
+for (const [feature, label] of [
+  [/color-mix\(/, "color-mix"],
+  [/aspect-ratio/, "aspect-ratio"],
+  [/\binset:/, "inset"],
+  [/place-items/, "place-items"],
+  [/[;{]\s*gap:/, "gap (les flexbox l'ignorent avant Chrome 84)"],
+]) {
+  check(!feature.test(cardStyle), `pas de ${label} dans la feuille de style`);
+}
+const code = cardSource.replace(/\/\/[^\n]*/g, "");
+check(!/flatMap|\?\?|\?\.[a-zA-Z_([]/.test(code), "ni `?.`, ni `??`, ni flatMap dans le code");
+
 console.log("\n--- messages ---");
 const rest = buildView(SCENARIOS["Aujourd'hui : repos"]({ lang: "fr" }), CONFIG);
 check(rest.alerts.length === 0 && rest.calm.kind === "rest", "repos : pas d'alerte, le verger se repose");
+check(rest.calm.next.includes("au printemps"), "en novembre, la reprise est annoncée au printemps");
+check(!/demain|dans ~/.test(rest.calm.next), "et pas pour demain, malgré le cumul de l'année écoulée");
+const january = SCENARIOS["Début de saison : bourgeons"]({ lang: "fr" });
+check(!buildView(january, CONFIG).calm.next.includes("au printemps"), "en saison, le délai reste estimé");
 
 const spring = buildView(SCENARIOS["Printemps : gel en floraison"]({ lang: "fr" }), CONFIG);
 check(spring.alerts[0].model === "frost" && spring.alerts[0].level === "severe", "le gel sévère passe en premier");
@@ -198,6 +225,27 @@ console.log("\n--- gestes ---");
   await card._onAction("biofix", "codling_moth", "golden");
   await card._onAction("biofix", "codling_moth", "golden");
   check(calls[1].service === "set_biofix" && calls[1].data.pest === "codling_moth", "la première capture déclare le biofix");
+
+  card._onChange({
+    target: {
+      hasAttribute: (name) => name === "data-stage",
+      blur() {},
+      dataset: { sub: "golden" },
+      value: "green_tip",
+    },
+  });
+  check(
+    calls.at(-1).service === "set_stage" && calls.at(-1).data.tree === "golden" && calls.at(-1).data.stage === "green_tip",
+    "la liste déroulante corrige le stade de l'arbre choisi"
+  );
+  calls.pop();
+
+  card._selected = "golden";
+  card._signature = null;
+  card._update();
+  const detail = card.shadowRoot.innerHTML;
+  check(detail.includes('data-stage data-sub="golden"'), "le détail propose la liste des stades");
+  check(detail.includes('value="full_bloom" selected'), "le stade courant y est présélectionné");
 
   await card._onAction("clear", "powdery_mildew", "conference");
   check(calls[2].service === "clear_treatment", "effacer un traitement ne demande pas de confirmation");

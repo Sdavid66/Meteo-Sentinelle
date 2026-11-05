@@ -324,6 +324,44 @@ def next_stage_threshold(crop: str, stage: str | None) -> tuple[str, float] | No
     return following, table[following]
 
 
+def correction_shift(
+    crop: str, stage: str, gdd_total: float, offset: float = 0.0
+) -> float:
+    """Décalage qui fait du stade observé la nouvelle référence de l'arbre.
+
+    Sans lui, l'avancement automatique reviendrait au stade attendu dès le
+    calcul suivant : un stade plus précoce choisi à la main ne tiendrait pas.
+    Le décalage place le cumul de l'arbre sur le seuil du stade observé, et la
+    suite se compte à partir de là. Un stade de repos n'a pas de seuil : le
+    compte repart de zéro, jusqu'au premier stade d'activité.
+    """
+    threshold = STAGE_GDD.get(crop, {}).get(stage)
+    target = 0.0 if threshold is None else threshold
+    return target - (gdd_total + offset)
+
+
+def is_before_bloom(crop: str, stage: str) -> bool:
+    """Le stade précède-t-il la floraison de cette espèce ?"""
+    stages = ordered_stages(crop)
+    blooms = [i for i, name in enumerate(stages) if name in BLOOM_STAGES]
+    if stage not in stages:
+        return True
+    return bool(blooms) and stages.index(stage) < blooms[0]
+
+
+def gdd_to_stage(
+    threshold: float, gdd_total: float, offset: float = 0.0, in_rest: bool = False
+) -> float:
+    """Degrés-jours restant à accumuler pour atteindre un stade.
+
+    Pendant le repos, tant que la saison suivante n'a pas commencé, le cumul
+    est encore celui de l'année écoulée, très au-delà du premier seuil. Il
+    annoncerait une reprise immédiate alors que le compteur va repartir de zéro.
+    """
+    reached = 0.0 if in_rest else gdd_total
+    return round(max(0.0, threshold - (reached + offset)), 1)
+
+
 def propose_advance(
     crop: str,
     current_stage: str | None,

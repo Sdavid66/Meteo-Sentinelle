@@ -17,6 +17,17 @@
  * séparé et d'ajouter une ressource à la main.
  */
 
+(function () {
+"use strict";
+
+//: Ce fichier est servi tel quel, sans compilation : il doit donc s'en tenir à
+//: ce que comprennent les appareils qui l'affichent. Le WebView d'un écran mural
+//: sous Android 8 (NSPanel Pro) rejette le fichier entier au premier `?.` ou `??`,
+//: et la carte « n'existe pas ». D'où une syntaxe limitée à ES2017, contrôlée par
+//: la CI, et une feuille de style sans `color-mix`, `aspect-ratio` ni `gap` de
+//: flexbox. La fonction englobante évite tout conflit de noms quand le fichier
+//: est chargé comme script classique.
+
 const CARD_TYPE = "meteo-sentinelle-card";
 const DOMAIN = "meteo_sentinelle";
 
@@ -107,6 +118,7 @@ const STRINGS = {
     when_days_one: "demain environ",
     when_dd: "dans {dd} °C·j",
     when_cold: "quand il fera plus doux",
+    when_spring: "au printemps",
     frost_title: "Gel attendu",
     frost_text: "{temp} °C prévus{when}. Dégâts dès {t10} °C à ce stade.",
     frost_near: "{temp} °C prévus{when}, tout près du seuil de {t10} °C.",
@@ -146,7 +158,8 @@ const STRINGS = {
     stage_here: "Dégâts de gel dès {t10} °C.",
     stage_safe: "Pas de risque de gel à ce stade.",
     next_stage: "Ensuite : {stage}, {when}.",
-    edit_stage: "Corriger le stade",
+    observed_stage: "Stade observé",
+    observed_help: "Votre arbre n'en est pas là ? Choisissez le bon stade : le suivi repart de là.",
     frost_gauge: "Gel : minimum prévu et seuils",
     gauge_min: "Prévu {temp} °C",
     gauge_t10: "10 % de dégâts",
@@ -250,6 +263,7 @@ const STRINGS = {
     when_days_one: "around tomorrow",
     when_dd: "in {dd} °C·d",
     when_cold: "once it warms up",
+    when_spring: "in spring",
     frost_title: "Frost expected",
     frost_text: "{temp} °C forecast{when}. Damage from {t10} °C at this stage.",
     frost_near: "{temp} °C forecast{when}, close to the {t10} °C threshold.",
@@ -289,7 +303,8 @@ const STRINGS = {
     stage_here: "Frost damage from {t10} °C.",
     stage_safe: "No frost risk at this stage.",
     next_stage: "Next: {stage}, {when}.",
-    edit_stage: "Correct the stage",
+    observed_stage: "Observed stage",
+    observed_help: "Tree not there yet? Pick the right stage: tracking resumes from there.",
     frost_gauge: "Frost: forecast low and thresholds",
     gauge_min: "Forecast {temp} °C",
     gauge_t10: "10% damage",
@@ -328,16 +343,29 @@ const STRINGS = {
 // ---------------------------------------------------------------------
 
 function strings(hass) {
-  const lang = (hass?.locale?.language || hass?.language || "en").slice(0, 2);
-  return STRINGS[lang] || STRINGS.en;
+  return STRINGS[language(hass).slice(0, 2)] || STRINGS.en;
+}
+
+/** Valeur, ou repli si elle est absente : 0 et "" restent des valeurs. */
+function orElse(value, fallback) {
+  return value === undefined || value === null ? fallback : value;
+}
+
+/** Attributs d'un état, sans erreur s'il n'existe pas. */
+function attrs(state) {
+  return (state && state.attributes) || {};
+}
+
+function allRisks(trees) {
+  return trees.reduce((all, tree) => all.concat(tree.risks), []);
 }
 
 function fill(template, values = {}) {
-  return template.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
+  return template.replace(/\{(\w+)\}/g, (_, key) => orElse(values[key], ""));
 }
 
 function esc(value) {
-  return String(value ?? "").replace(
+  return String(orElse(value, "")).replace(
     /[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
   );
@@ -356,7 +384,7 @@ function isNumber(value) {
 }
 
 function language(hass) {
-  return hass?.locale?.language || hass?.language || "en";
+  return (hass && hass.locale && hass.locale.language) || (hass && hass.language) || "en";
 }
 
 function formatNumber(hass, value, digits = 1) {
@@ -367,7 +395,7 @@ function formatNumber(hass, value, digits = 1) {
 }
 
 function zone(hass) {
-  return hass?.config?.time_zone || undefined;
+  return (hass && hass.config && hass.config.time_zone) || undefined;
 }
 
 function dayKey(hass, date) {
@@ -439,7 +467,7 @@ function formatWhen(hass, s, value) {
 /** Libellé traduit d'un stade, par les traductions de l'intégration. */
 function stageLabel(hass, stateObj, key) {
   if (!key) return "";
-  if (stateObj && hass?.formatEntityState) {
+  if (stateObj && hass && hass.formatEntityState) {
     try {
       const label = hass.formatEntityState(stateObj, key);
       if (label) return label;
@@ -458,19 +486,19 @@ function stageLabel(hass, stateObj, key) {
 /** Répertorie les entités de l'intégration, par nature. */
 function discover(hass) {
   const registry = hass.entities || {};
-  let ids = Object.keys(registry).filter((id) => registry[id]?.platform === DOMAIN);
+  let ids = Object.keys(registry).filter((id) => registry[id] && registry[id].platform === DOMAIN);
   // Le registre n'est pas toujours exposé au frontend : l'attribut prend
   // alors le relais.
   if (!ids.length) {
     ids = Object.keys(hass.states || {}).filter(
-      (id) => id.startsWith("sensor.") && hass.states[id]?.attributes?.site_id
+      (id) => id.startsWith("sensor.") && attrs(hass.states[id]).site_id
     );
   }
   const found = { risks: [], stages: [], spray: [], season: [], gdd: [] };
   for (const id of ids) {
     if (!id.startsWith("sensor.")) continue;
-    const attributes = hass.states[id]?.attributes;
-    if (!attributes) continue;
+    if (!hass.states[id] || !hass.states[id].attributes) continue;
+    const attributes = hass.states[id].attributes;
     if (attributes.model) found.risks.push(id);
     else if (attributes.stages && attributes.subentry_id) found.stages.push(id);
     else if (attributes.windows !== undefined) found.spray.push(id);
@@ -484,7 +512,7 @@ function discover(hass) {
 
 /** Degrés-jours quotidiens récents pour une base donnée, ou null. */
 function dailySpeed(gddState, base) {
-  const recent = (gddState?.attributes?.recent_days || []).slice(-7);
+  const recent = (attrs(gddState).recent_days || []).slice(-7);
   if (!recent.length) return null;
   const mean = recent.reduce((sum, day) => sum + (day.gdd || 0), 0) / recent.length;
   return Math.max(0, mean + GDD_BASE - base);
@@ -541,8 +569,9 @@ const VISUAL_SEASON_GDD = 1500;
 
 function computeGrowth(stageKey, attributes) {
   const phase = STAGE_PHASES[stageKey] || "plant";
-  const path = attributes?.stages || [];
-  const gdd = (attributes?.gdd_total || 0) + (attributes?.gdd_offset || 0);
+  const path = attributes.stages || [];
+  const gdd =
+    (attributes.gdd_total || 0) + (attributes.gdd_offset || 0) + (attributes.gdd_shift || 0);
   const ranked = path.filter((step) => isNumber(step.gdd));
   const lastGdd = ranked.length ? ranked[ranked.length - 1].gdd : null;
   const isLast = ranked.length && ranked[ranked.length - 1].key === stageKey;
@@ -554,9 +583,9 @@ function computeGrowth(stageKey, attributes) {
   if (phase === "rest") return { phase, ripeness: 0 };
 
   // Floraison passée : la suite se lit sur la date de floraison.
-  const remaining = attributes?.days_to_harvest;
-  const total = attributes?.bloom_to_harvest_days;
-  if (attributes?.bloom_date && isNumber(remaining) && isNumber(total) && total > 0) {
+  const remaining = attributes.days_to_harvest;
+  const total = attributes.bloom_to_harvest_days;
+  if (attributes.bloom_date && isNumber(remaining) && isNumber(total) && total > 0) {
     const elapsed = (Date.now() - new Date(attributes.bloom_date).getTime()) / 86400000;
     if (elapsed > total + 21) return { phase: "autumn", ripeness: 1, growth: "autumn" };
     if (remaining <= 0) return { phase: "ripe", ripeness: 1, growth: "harvest" };
@@ -605,17 +634,17 @@ function buildView(hass, config, ids) {
   }
 
   // Filtre par appareils, s'il est configuré.
-  const wanted = config?.devices?.length ? new Set(config.devices) : null;
+  const wanted = config && config.devices && config.devices.length ? new Set(config.devices) : null;
   const registry = hass.entities || {};
   const keep = (entry) => {
     if (!wanted) return true;
     const any = entry.stage || entry.risks[0];
-    return any && wanted.has(registry[any.entity_id]?.device_id);
+    return any && wanted.has((registry[any.entity_id] || {}).device_id);
   };
 
   const entries = [...byTree.values()].filter(keep);
-  const siteId =
-    entries[0]?.stage?.attributes?.site_id || entries[0]?.risks[0]?.attributes?.site_id;
+  const firstEntry = entries[0] || { risks: [] };
+  const siteId = attrs(firstEntry.stage).site_id || attrs(firstEntry.risks[0]).site_id;
   const siteEntity = (list) => {
     const states = list.map((id) => hass.states[id]).filter(Boolean);
     return states.find((state) => state.attributes.site_id === siteId) || states[0] || null;
@@ -623,11 +652,15 @@ function buildView(hass, config, ids) {
   const gddState = siteEntity(ids.gdd);
   const seasonState = siteEntity(ids.season);
   const sprayState = siteEntity(ids.spray);
+  // La date de repos est passée et la saison suivante n'a pas commencé : le cumul
+  // ne dit encore rien du délai avant la reprise.
+  const beforeSeason = Boolean(attrs(seasonState).in_rest);
 
   const trees = entries.map((entry) => {
-    const attributes = entry.stage?.attributes || entry.risks[0]?.attributes || {};
-    const stageKey = attributes.stage_key ?? attributes.stage ?? null;
-    const growth = computeGrowth(stageKey, entry.stage?.attributes);
+    const stageAttributes = attrs(entry.stage);
+    const attributes = entry.stage ? stageAttributes : attrs(entry.risks[0]);
+    const stageKey = orElse(orElse(attributes.stage_key, attributes.stage), null);
+    const growth = computeGrowth(stageKey, stageAttributes);
     const names = computeTitle(s, attributes);
     const resting = REST_STAGES.includes(stageKey);
     const risks = entry.risks
@@ -637,7 +670,7 @@ function buildView(hass, config, ids) {
         level: LEVELS.includes(state.state) ? state.state : "none",
         attributes: state.attributes,
         protection: state.attributes.protection || null,
-        protectedNow: state.attributes.protection?.status === "protected",
+        protectedNow: (state.attributes.protection || {}).status === "protected",
       }))
       .sort((a, b) => rank(b.level) - rank(a.level));
 
@@ -645,8 +678,8 @@ function buildView(hass, config, ids) {
       ? s.growth[growth.growth]
       : stageLabel(hass, entry.stage, stageKey) || s.crops[attributes.crop] || "";
     const speed = dailySpeed(gddState, GDD_BASE);
-    const next = entry.stage?.attributes?.next_stage_key;
-    const toNext = entry.stage?.attributes?.gdd_to_next_stage;
+    const next = stageAttributes.next_stage_key;
+    const toNext = stageAttributes.gdd_to_next_stage;
 
     return {
       key: entry.key,
@@ -660,24 +693,29 @@ function buildView(hass, config, ids) {
       stageLabel: label,
       growth,
       resting,
-      path: entry.stage?.attributes?.stages || [],
-      t10: entry.stage?.attributes?.t10,
-      gdd: entry.stage?.attributes?.gdd_total,
+      path: stageAttributes.stages || [],
+      t10: stageAttributes.t10,
+      gdd: stageAttributes.gdd_total,
       next:
         next && isNumber(toNext)
-          ? { key: next, label: stageLabel(hass, entry.stage, next), dd: toNext, speed }
+          ? {
+              key: next,
+              label: stageLabel(hass, entry.stage, next),
+              dd: toNext,
+              speed,
+              when: beforeSeason ? s.when_spring : formatDelay(hass, s, toNext, speed),
+            }
           : null,
       risks,
       worst: risks.reduce((worst, risk) => Math.max(worst, rank(risk.level)), 0),
-      seasonWinter: seasonState?.state === "winter_rest",
+      seasonWinter: Boolean(seasonState) && seasonState.state === "winter_rest",
     };
   });
 
   trees.sort((a, b) => b.worst - a.worst || a.title.localeCompare(b.title));
 
   const alerts = buildAlerts(hass, s, trees, sprayState);
-  const frostLows = trees
-    .flatMap((tree) => tree.risks)
+  const frostLows = allRisks(trees)
     .filter((risk) => risk.model === "frost" && isNumber(risk.attributes.air_min))
     .map((risk) => risk.attributes.air_min);
 
@@ -714,15 +752,15 @@ function firstDaylight(hass, window, now) {
 
 function nextDaylightWindow(hass, sprayState) {
   const now = Date.now();
-  for (const window of sprayState?.attributes?.windows || []) {
+  for (const window of attrs(sprayState).windows || []) {
     const found = firstDaylight(hass, window, now);
-    if (found) return { ...found, open: found.from <= now };
+    if (found) return { from: found.from, to: found.to, open: found.from <= now };
   }
   return null;
 }
 
 function sprayAdvice(hass, s, sprayState) {
-  if (!sprayState?.attributes) return "";
+  if (!sprayState || !sprayState.attributes) return "";
   const window = nextDaylightWindow(hass, sprayState);
   if (!window) return s.do_treat_none;
   if (window.open) return fill(s.do_treat_open, { time: formatTime(hass, new Date(window.to)) });
@@ -761,7 +799,7 @@ function buildAlerts(hass, s, trees, sprayState) {
 
     if (group.model === "frost") {
       const coldest = group.risks.reduce((best, item) =>
-        (item.attributes.reference_min ?? 99) < (best.attributes.reference_min ?? 99) ? item : best
+        orElse(item.attributes.reference_min, 99) < orElse(best.attributes.reference_min, 99) ? item : best
       );
       const when = coldest.attributes.next_frost_time
         ? ` ${formatWhen(hass, s, coldest.attributes.next_frost_time)}`
@@ -781,7 +819,7 @@ function buildAlerts(hass, s, trees, sprayState) {
     } else if (DISEASES.includes(group.model)) {
       title = fill(s.disease_title, { model });
       if (group.model === "powdery_mildew") {
-        text = fill(s.mildew_text, { index: a.index ?? 0 });
+        text = fill(s.mildew_text, { index: a.index || 0 });
         if (a.spray_interval_days) {
           text += fill(s.mildew_interval, { days: a.spray_interval_days });
         }
@@ -798,7 +836,7 @@ function buildAlerts(hass, s, trees, sprayState) {
     const allProtected = group.risks.every((item) => item.protectedNow);
     if (allProtected) {
       const until = group.risks
-        .map((item) => item.protection?.protected_until)
+        .map((item) => (item.protection || {}).protected_until)
         .filter(Boolean)
         .sort()[0];
       action = until ? fill(s.protected_until, { date: formatDate(hass, until) }) : s.protected_short;
@@ -837,6 +875,7 @@ function buildCalm(hass, s, trees, gddState) {
         what: tree.next.label.charAt(0).toLowerCase() + tree.next.label.slice(1),
         dd: tree.next.dd,
         speed: tree.next.speed,
+        when: tree.next.when,
       });
     }
     for (const risk of tree.risks) {
@@ -848,15 +887,22 @@ function buildCalm(hass, s, trees, gddState) {
         tree: tree.title,
         what: `${s.models[risk.model]} (${(s.cycle[a.next_cycle_stage] || "").toLowerCase()})`,
         dd: a.dd_to_next_cycle_stage,
-        speed: dailySpeed(gddState, a.base_temperature ?? GDD_BASE),
+        speed: dailySpeed(gddState, orElse(a.base_temperature, GDD_BASE)),
+        when: formatDelay(
+          hass,
+          s,
+          a.dd_to_next_cycle_stage,
+          dailySpeed(gddState, orElse(a.base_temperature, GDD_BASE))
+        ),
       });
     }
   }
   const soonest = candidates
-    .map((item) => ({
-      ...item,
-      days: isNumber(item.speed) && item.speed >= 0.5 ? item.dd / item.speed : Infinity,
-    }))
+    .map((item) =>
+      Object.assign({}, item, {
+        days: isNumber(item.speed) && item.speed >= 0.5 ? item.dd / item.speed : Infinity,
+      })
+    )
     .sort((a, b) => a.days - b.days || a.dd - b.dd)[0];
 
   const allResting = trees.every((tree) => tree.resting);
@@ -868,7 +914,7 @@ function buildCalm(hass, s, trees, gddState) {
       next: soonest
         ? fill(s.first_wake, {
             tree: soonest.tree,
-            when: formatDelay(hass, s, soonest.dd, soonest.speed),
+            when: soonest.when,
           })
         : "",
     };
@@ -881,7 +927,7 @@ function buildCalm(hass, s, trees, gddState) {
       ? fill(s.next_meeting, {
           what: soonest.what,
           tree: soonest.tree,
-          when: formatDelay(hass, s, soonest.dd, soonest.speed),
+          when: soonest.when,
         })
       : "",
   };
@@ -1171,7 +1217,7 @@ function drawFruitTree(tree, rand) {
       break;
     case "fruitlet":
       top += drawCanopy(shape, FOLIAGE.spring, rand, 0.9);
-      top += drawFruits(tree.crop, shape, { ...growth, ripeness: Math.min(growth.ripeness, 0.15) }, rand);
+      top += drawFruits(tree.crop, shape, Object.assign({}, growth, { ripeness: Math.min(growth.ripeness, 0.15) }), rand);
       break;
     case "fruit":
     case "ripe":
@@ -1434,7 +1480,7 @@ function drawHazards(tree, rand, canopyPoints) {
 function drawScene(tree, dark, index) {
   const rand = rng(String(tree.key));
   const frost = tree.risks.find((risk) => risk.model === "frost");
-  const frostRank = rank(frost?.level);
+  const frostRank = rank(frost ? frost.level : "none");
   const paletteSet = dark ? PALETTES.dark : PALETTES.light;
   const name = frostRank >= 2 ? "night" : frostRank === 1 ? "cold" : sceneSeason(tree);
   const palette = paletteSet[name];
@@ -1569,7 +1615,7 @@ function sensitivity(t10) {
   if (!isNumber(t10)) return { ratio: 0.05, color: "var(--divider-color)" };
   const ratio = clamp(1 + t10 / 12, 0.06, 1);
   const hue = Math.round(205 - 205 * ratio);
-  return { ratio, color: `hsl(${hue} 70% 52%)` };
+  return { ratio, color: `hsl(${hue}, 70%, 52%)` };
 }
 
 function renderPath(hass, s, tree) {
@@ -1579,7 +1625,7 @@ function renderPath(hass, s, tree) {
     label: stageLabel(hass, tree.stageState, step.key),
     t10: step.t10,
   }));
-  const hasFruit = isNumber(tree.stageState?.attributes?.bloom_to_harvest_days);
+  const hasFruit = isNumber(attrs(tree.stageState).bloom_to_harvest_days);
   if (hasFruit) {
     const lastT10 = steps[steps.length - 1].t10;
     steps.push({ key: "__fruit", label: s.growth.fruit, t10: lastT10 });
@@ -1605,7 +1651,7 @@ function renderPath(hass, s, tree) {
     here.push(
       fill(s.next_stage, {
         stage: tree.next.label,
-        when: formatDelay(hass, s, tree.next.dd, tree.next.speed),
+        when: tree.next.when,
       })
     );
   }
@@ -1617,15 +1663,25 @@ function renderPath(hass, s, tree) {
     <div class="path-ends"><span>${esc(steps[0].label)}</span><span>${esc(steps[steps.length - 1].label)}</span></div>`
       : "";
 
+  const options = tree.path
+    .map(
+      (step) =>
+        `<option value="${esc(step.key)}" ${step.key === tree.stageKey ? "selected" : ""}>${esc(stageLabel(hass, tree.stageState, step.key))}</option>`
+    )
+    .join("");
+  const picker = options
+    ? `<label class="picker"><span class="section-title">${esc(s.observed_stage)}</span>
+      <select data-stage data-sub="${esc(tree.subentryId)}">${options}</select></label>
+    <div class="muted small">${esc(s.observed_help)}</div>`
+    : "";
+
   return `<section class="section">
-    <div class="section-head">
-      <span class="section-title">${esc(s.season_path)}</span>
-      ${tree.stageState ? `<button class="link" data-more="${esc(tree.stageState.entity_id)}">${esc(s.edit_stage)}</button>` : ""}
-    </div>
+    <div class="section-title">${esc(s.season_path)}</div>
     ${chart}
     <div class="path-now">${esc(tree.stageLabel)}</div>
     ${here.length ? `<div class="muted">${esc(here.join(" "))}</div>` : ""}
     ${chart ? `<div class="muted small">${esc(s.frost_sensitivity)}</div>` : ""}
+    ${picker}
   </section>`;
 }
 
@@ -1694,7 +1750,7 @@ function renderCycle(hass, s, tree, risk, gddState) {
             hass,
             s,
             a.dd_to_next_cycle_stage,
-            dailySpeed(gddState, a.base_temperature ?? GDD_BASE)
+            dailySpeed(gddState, orElse(a.base_temperature, GDD_BASE))
           ),
         })
       );
@@ -1709,11 +1765,11 @@ function renderDisease(hass, s, tree, risk) {
   const a = risk.attributes;
   if (tree.resting) return `<div class="muted">${esc(s.paused)}</div>`;
   if (risk.model === "powdery_mildew") {
-    const index = clamp(a.index ?? 0, 0, 100);
+    const index = clamp(a.index || 0, 0, 100);
     return `<div class="meter" role="img" aria-label="${esc(fill(s.index_band, { index }))}"><span class="meter-fill lv-${risk.level}" style="width:${index}%"></span><span class="meter-tick" style="left:30%"></span><span class="meter-tick" style="left:60%"></span></div>
       <div class="muted">${esc(fill(s.index_band, { index }))}${a.spray_interval_days ? esc(fill(s.mildew_interval, { days: a.spray_interval_days })) : ""}</div>`;
   }
-  const days = clamp(a.hutton_consecutive_days ?? 0, 0, 2);
+  const days = clamp(a.hutton_consecutive_days || 0, 0, 2);
   return `<div class="dots">${[0, 1].map((i) => `<span class="dot ${i < days ? `on lv-${risk.level === "none" ? "watch" : risk.level}` : ""}"></span>`).join("")}<span class="muted">${esc(fill(s.wet_days, { days }))}</span></div>`;
 }
 
@@ -1722,7 +1778,7 @@ function renderRiskAction(hass, s, tree, risk, confirm) {
   if (TREATABLE.includes(risk.model) && !tree.resting) {
     const key = `treat|${tree.subentryId}|${risk.model}`;
     if (risk.protectedNow) {
-      const until = risk.protection?.protected_until;
+      const until = (risk.protection || {}).protected_until;
       buttons.push(
         `<span class="protect">${icon("shield", 14)}${esc(until ? fill(s.protected_until, { date: formatDate(hass, until) }) : s.protected_short)}</span>`
       );
@@ -1758,11 +1814,11 @@ function renderRisk(hass, view, tree, risk, confirm) {
   else if (DISEASES.includes(risk.model)) body = renderDisease(hass, s, tree, risk);
   else body = renderCycle(hass, s, tree, risk, gddState);
   return `<div class="risk lv-${risk.level}">
-    <button class="risk-head" data-more="${esc(risk.entityId)}">
+    <button class="risk-head" data-more="${esc(risk.entityId)}"><span class="risk-row">
       <span class="risk-icon">${icon(MODEL_ICON[risk.model], 16)}</span>
       <span class="risk-name">${esc(s.models[risk.model] || risk.model)}</span>
       <span class="pill">${esc(s.levels[risk.level])}</span>
-    </button>
+    </span></button>
     ${body}
     ${renderRiskAction(hass, s, tree, risk, confirm)}
   </div>`;
@@ -1810,8 +1866,7 @@ function renderSpray(hass, view) {
     }
   }
 
-  const frosts = view.trees
-    .flatMap((tree) => tree.risks)
+  const frosts = allRisks(view.trees)
     .filter((risk) => risk.model === "frost" && risk.level !== "none" && risk.attributes.next_frost_time)
     .map((risk) => Date.parse(risk.attributes.next_frost_time))
     .filter((value) => value > now && value < end);
@@ -1821,7 +1876,7 @@ function renderSpray(hass, view) {
 
   const next = nextDaylightWindow(hass, spray);
   let summary;
-  if (next?.open) summary = fill(s.spray_open, { time: formatTime(hass, new Date(next.to)) });
+  if (next && next.open) summary = fill(s.spray_open, { time: formatTime(hass, new Date(next.to)) });
   else if (next) summary = fill(s.spray_next, { when: formatWhen(hass, s, next.from) });
   else summary = s.spray_none;
   const blocking = (a.blocking || [])
@@ -1832,7 +1887,7 @@ function renderSpray(hass, view) {
   return `<button class="spray" data-more="${esc(spray.entity_id)}">
     <span class="spray-head">
       <span class="spray-title">${icon("spray", 15)}${esc(s.spray_title)}</span>
-      <span class="spray-summary ${next?.open ? "open" : ""}">${esc(summary)}${!next && blocking ? ` (${esc(blocking)})` : ""}</span>
+      <span class="spray-summary ${next && next.open ? "open" : ""}">${esc(summary)}${!next && blocking ? ` (${esc(blocking)})` : ""}</span>
     </span>
     <span class="spray-track">${windows}${ticks.join("")}${frostMark}<span class="tick now"><b>${esc(s.now_label)}</b></span></span>
   </button>`;
@@ -1840,9 +1895,9 @@ function renderSpray(hass, view) {
 
 function renderCard(hass, config, view, selected, confirm) {
   const { s, trees } = view;
-  const dark = Boolean(hass.themes?.darkMode);
+  const dark = Boolean(hass.themes && hass.themes.darkMode);
   const title = config.title === undefined ? s.title : config.title;
-  const phase = view.season?.state;
+  const phase = view.season ? view.season.state : null;
 
   if (!trees.length) {
     return `<ha-card class="${dark ? "dark" : ""}"><div class="root"><div class="empty">
@@ -1880,91 +1935,113 @@ function renderCard(hass, config, view, selected, confirm) {
 }
 
 const CARD_STYLE = `
-  :host { display: block; container-type: inline-size; --ok: #2e8b57; --watch: #b97a00; --warning: #d9590b; --severe: #cf2a2a; --rest: #4f7396; }
-  ha-card.dark { --ok: #66c28d; --watch: #f0b429; --warning: #ff9347; --severe: #ff7575; --rest: #93b6d6; }
+  :host { display: block; container-type: inline-size; --ok: #2e8b57; --ok-rgb: 46,139,87; --watch: #b97a00; --watch-rgb: 185,122,0; --warning: #d9590b; --warning-rgb: 217,89,11; --severe: #cf2a2a; --severe-rgb: 207,42,42; --rest: #4f7396; --rest-rgb: 79,115,150; }
+  ha-card.dark { --ok: #66c28d; --ok-rgb: 102,194,141; --watch: #f0b429; --watch-rgb: 240,180,41; --warning: #ff9347; --warning-rgb: 255,147,71; --severe: #ff7575; --severe-rgb: 255,117,117; --rest: #93b6d6; --rest-rgb: 147,182,214; }
   ha-card { display: block; overflow: hidden; --icon-hole: var(--ha-card-background, var(--card-background-color, #fff)); }
-  .root { padding: 16px; display: flex; flex-direction: column; gap: 14px; color: var(--primary-text-color); }
+  .root { padding: 16px; color: var(--primary-text-color); }
+  .root > * + * { margin-top: 14px; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: left; }
   button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
   .ic { flex: none; display: block; }
   .muted { color: var(--secondary-text-color); font-size: 12.5px; line-height: 1.45; }
   .small { font-size: 11.5px; }
 
-  .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
-  .title { margin: 0; font-size: 20px; font-weight: 500; line-height: 1.2; letter-spacing: -.005em; }
-  .stats { display: flex; flex-wrap: wrap; gap: 6px; }
-  .stat { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--secondary-text-color); background: var(--secondary-background-color, rgba(127,127,127,.12)); border-radius: 99px; padding: 4px 10px 4px 8px; white-space: nowrap; }
+  .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: -6px; }
+  .title { margin: 0 12px 6px 0; font-size: 20px; font-weight: 500; line-height: 1.2; letter-spacing: -.005em; }
+  .stats { display: flex; flex-wrap: wrap; margin-left: -6px; }
+  .stat { display: inline-flex; align-items: center; margin: 0 0 6px 6px; font-size: 12px; color: var(--secondary-text-color); background: var(--secondary-background-color, rgba(127,127,127,.12)); border-radius: 99px; padding: 4px 10px 4px 8px; white-space: nowrap; }
+  .stat .ic { margin-right: 5px; }
 
-  .lv-none, .ok { --c: var(--ok); } .lv-watch { --c: var(--watch); } .lv-warning { --c: var(--warning); } .lv-severe { --c: var(--severe); } .rest { --c: var(--rest); }
+  .lv-none, .ok { --c: var(--ok); --c-rgb: var(--ok-rgb); }
+  .lv-watch { --c: var(--watch); --c-rgb: var(--watch-rgb); }
+  .lv-warning { --c: var(--warning); --c-rgb: var(--warning-rgb); }
+  .lv-severe { --c: var(--severe); --c-rgb: var(--severe-rgb); }
+  .rest { --c: var(--rest); --c-rgb: var(--rest-rgb); }
 
-  .alerts { display: flex; flex-direction: column; gap: 6px; }
-  .banner { display: flex; gap: 12px; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--c) 12%, transparent); }
-  .banner-icon { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--c); --icon-hole: var(--c); }
+  .alerts > * + * { margin-top: 6px; }
+  .banner { display: flex; padding: 12px 14px; border-radius: 14px; background: rgba(var(--c-rgb), .12); }
+  .banner-icon { flex: none; width: 40px; height: 40px; margin-right: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; background: var(--c); --icon-hole: var(--c); }
   ha-card.dark .banner-icon { color: #16191c; --icon-hole: var(--c); }
-  .banner-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .banner-eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 2px; }
+  .banner-body { min-width: 0; }
+  .banner-eyebrow { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 2px; }
+  .banner-eyebrow > * { margin: 0 8px 2px 0; }
   .banner-names { font-size: 12px; color: var(--secondary-text-color); }
   .banner-title { font-size: 15px; font-weight: 600; line-height: 1.3; }
-  .banner-text { font-size: 13px; line-height: 1.45; color: var(--primary-text-color); opacity: .86; }
-  .banner-action { font-size: 13px; font-weight: 500; line-height: 1.45; color: var(--c); margin-top: 2px; }
-  .pill { display: inline-block; font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 7px; border-radius: 99px; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); white-space: nowrap; }
-  .minor { display: flex; align-items: center; gap: 8px; padding: 4px 14px; font-size: 13px; color: var(--primary-text-color); }
-  .minor .ic { color: var(--c); }
+  .banner-text { margin-top: 2px; font-size: 13px; line-height: 1.45; color: var(--primary-text-color); opacity: .86; }
+  .banner-action { margin-top: 4px; font-size: 13px; font-weight: 500; line-height: 1.45; color: var(--c); }
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 7px; border-radius: 99px; color: var(--c); background: rgba(var(--c-rgb), .16); white-space: nowrap; }
+  .minor { display: flex; align-items: center; padding: 4px 14px; font-size: 13px; color: var(--primary-text-color); }
+  .minor .ic { color: var(--c); margin-right: 8px; }
   .minor-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .minor-names { color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: auto; font-size: 12px; min-width: 40px; flex: 0 1 auto; }
+  .minor-names { color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: auto; padding-left: 8px; font-size: 12px; min-width: 40px; flex: 0 1 auto; }
   .minor-more { padding: 0 14px; font-size: 12px; color: var(--secondary-text-color); }
 
-  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(146px, 46%), 1fr)); grid-auto-flow: dense; gap: 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); grid-template-columns: repeat(auto-fill, minmax(min(146px, 46%), 1fr)); grid-auto-flow: dense; grid-gap: 12px; align-items: start; }
   .tiles.n1 { grid-template-columns: minmax(0, 1fr); }
   .tiles.n2, .tiles.n4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tile { display: flex; flex-direction: column; min-width: 0; border-radius: 14px; transition: transform .16s ease; }
+  .tile { display: block; width: 100%; min-width: 0; border-radius: 14px; transition: transform .16s ease; }
   .tile:hover { transform: translateY(-2px); }
-  .vignette { position: relative; display: block; border-radius: 14px; overflow: hidden; aspect-ratio: 16 / 11; box-shadow: inset 0 0 0 1px rgba(0,0,0,.05); }
+  .vignette { position: relative; display: block; border-radius: 14px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0,0,0,.05); }
+  .vignette::before { content: ""; display: block; padding-top: 68.75%; }
   .tile.lv-warning .vignette, .tile.lv-severe .vignette { box-shadow: 0 0 0 2px var(--c); }
   .tile.lv-severe .vignette { animation: pulse 2.6s ease-in-out infinite; }
   .tile.selected .vignette { box-shadow: 0 0 0 2.5px var(--primary-color); animation: none; }
-  .scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  .temp { position: absolute; top: 7px; left: 7px; display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; font-weight: 600; color: #0d2b4a; background: rgba(255,255,255,.88); border-radius: 99px; padding: 3px 7px 3px 5px; }
+  .scene { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; }
+  .temp { position: absolute; top: 7px; left: 7px; display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 600; color: #0d2b4a; background: rgba(255,255,255,.88); border-radius: 99px; padding: 3px 7px 3px 5px; }
+  .temp .ic { margin-right: 3px; }
   .shield { position: absolute; top: 7px; right: 7px; color: var(--ok); background: rgba(255,255,255,.9); border-radius: 50%; padding: 3px; --icon-hole: #fff; }
-  .tile-body { display: flex; flex-direction: column; gap: 2px; padding: 8px 2px 2px; min-width: 0; }
-  .tile-title { font-size: 14px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .tile-body { display: block; padding: 8px 2px 2px; min-width: 0; }
+  .tile-body > * + * { margin-top: 2px; }
+  .tile-title { font-size: 14px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; overflow-wrap: anywhere; }
   .tile-sub { font-size: 12px; line-height: 1.3; color: var(--secondary-text-color); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .tile-note { font-size: 12px; line-height: 1.3; color: var(--secondary-text-color); }
-  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
-  .chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; font-size: 11.5px; font-weight: 500; line-height: 1.1; color: var(--c, var(--secondary-text-color)); background: color-mix(in srgb, var(--c, #888) 13%, transparent); border-radius: 99px; padding: 3px 8px 3px 6px; --icon-hole: transparent; }
+  .tile-note { display: block; font-size: 12px; line-height: 1.3; color: var(--secondary-text-color); }
+  .tile-body > .chips { display: flex; flex-wrap: wrap; margin: 1px -4px 0 0; }
+  .chip { display: inline-flex; align-items: center; max-width: 100%; margin: 4px 4px 0 0; font-size: 11.5px; font-weight: 500; line-height: 1.1; color: var(--c, var(--secondary-text-color)); background: rgba(var(--c-rgb, 127,127,127), .13); border-radius: 99px; padding: 3px 8px 3px 6px; --icon-hole: transparent; }
+  .chip .ic { margin-right: 4px; }
   .chip > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .chip.more { padding: 3px 7px; --c: var(--secondary-text-color); }
+  .chip.more { padding: 3px 7px; }
 
-  .panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 14px; padding: 14px; border-radius: 14px; background: var(--secondary-background-color, rgba(127,127,127,.09)); animation: reveal .18s ease-out; }
-  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .panel-title { font-size: 16px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
-  .icon-btn { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--secondary-text-color); }
+  .panel { grid-column: 1 / -1; padding: 14px; border-radius: 14px; background: var(--secondary-background-color, rgba(127,127,127,.09)); animation: reveal .18s ease-out; }
+  .panel > * + * { margin-top: 14px; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; }
+  .panel-title { margin-right: 8px; font-size: 16px; font-weight: 600; min-width: 0; word-break: break-word; overflow-wrap: anywhere; }
+  .icon-btn { width: 30px; height: 30px; padding: 7px; flex: none; border-radius: 50%; color: var(--secondary-text-color); }
   .icon-btn:hover { background: rgba(127,127,127,.16); }
-  .section { display: flex; flex-direction: column; gap: 6px; }
-  .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .section > * + * { margin-top: 6px; }
   .section-title { font-size: 12px; font-weight: 600; color: var(--secondary-text-color); }
   .link { font-size: 12px; color: var(--primary-color); white-space: nowrap; }
   .link:hover { text-decoration: underline; }
-  .path { display: flex; align-items: flex-end; gap: 3px; height: 40px; }
-  .step { flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; border-radius: 4px; position: relative; }
+  .section > .picker { display: block; margin-top: 12px; }
+  .picker .section-title { display: block; margin-bottom: 5px; }
+  .picker select { display: block; width: 100%; height: 40px; padding: 0 10px; font: inherit; font-size: 14px; color: var(--primary-text-color); background: var(--ha-card-background, var(--card-background-color, #fff)); border: 1px solid var(--divider-color, rgba(127,127,127,.4)); border-radius: 10px; }
+  ha-card.dark .picker select { color-scheme: dark; }
+  .path { display: flex; align-items: flex-end; height: 40px; }
+  .step { flex: 1 1 0; min-width: 0; height: 100%; margin-left: 3px; display: flex; align-items: flex-end; border-radius: 4px; position: relative; }
+  .step:first-child { margin-left: 0; }
   .step-bar { display: block; width: 100%; min-height: 3px; border-radius: 3px; }
   .step.future .step-bar { opacity: .34; }
   .step.past .step-bar { opacity: .7; }
   .step.now .step-bar { opacity: 1; }
   .step.now::after { content: ""; position: absolute; left: 50%; bottom: -9px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--primary-text-color); }
-  .path-ends { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--secondary-text-color); }
+  .section > .path-ends { display: flex; justify-content: space-between; margin-top: 14px; font-size: 11px; color: var(--secondary-text-color); }
   .path-now { font-size: 14px; font-weight: 500; line-height: 1.3; }
-  .risks { display: flex; flex-direction: column; gap: 8px; }
-  .risk { display: flex; flex-direction: column; gap: 7px; padding: 10px 12px; border-radius: 12px; background: var(--ha-card-background, var(--card-background-color, #fff)); }
-  .risk-head { display: flex; align-items: center; gap: 8px; width: 100%; }
-  .risk-icon { width: 24px; height: 24px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); --icon-hole: transparent; }
-  .risk-name { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; }
-  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-  .btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; padding: 7px 12px; border-radius: 99px; box-shadow: inset 0 0 0 1px var(--divider-color, rgba(127,127,127,.4)); }
+  .risks > * + * { margin-top: 8px; }
+  .risk { padding: 10px 12px; border-radius: 12px; background: var(--ha-card-background, var(--card-background-color, #fff)); }
+  .risk > * + * { margin-top: 7px; }
+  .risk-head { display: block; width: 100%; }
+  .risk-row { display: flex; align-items: center; }
+  .risk-icon { width: 24px; height: 24px; margin-right: 8px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--c); background: rgba(var(--c-rgb), .14); --icon-hole: transparent; }
+  .risk-name { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; margin-right: 8px; }
+  .risk > .actions { display: flex; flex-wrap: wrap; align-items: center; margin-right: -12px; margin-bottom: -8px; }
+  .actions > * { margin: 0 12px 8px 0; }
+  .btn { display: inline-block; font-size: 12.5px; font-weight: 500; line-height: 16px; padding: 7px 12px; border-radius: 99px; box-shadow: inset 0 0 0 1px var(--divider-color, rgba(127,127,127,.4)); }
+  .btn .ic { display: inline-block; vertical-align: -3px; margin-right: 6px; }
   .btn:hover { background: rgba(127,127,127,.1); }
   .btn.confirm { color: var(--text-primary-color, #fff); background: var(--primary-color); box-shadow: none; }
-  .protect { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 500; color: var(--ok); --icon-hole: var(--ha-card-background, #fff); }
-  .gauge { position: relative; display: flex; flex-direction: column; gap: 3px; padding-top: 20px; }
+  .protect { display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; color: var(--ok); --icon-hole: var(--ha-card-background, #fff); }
+  .protect .ic { margin-right: 5px; }
+  .gauge { position: relative; padding-top: 17px; }
+  .gauge > * + * { margin-top: 3px; }
   .gauge-label { position: absolute; top: 0; font-size: 12px; font-weight: 600; white-space: nowrap; transform: translateX(-50%); }
   .gauge-label.left { transform: translateX(-6px); }
   .gauge-label.right { transform: translateX(calc(-100% + 6px)); }
@@ -1977,39 +2054,42 @@ const CARD_STYLE = `
   .gauge-ticks { position: relative; height: 15px; font-size: 11px; color: var(--secondary-text-color); }
   .gauge-ticks span { position: absolute; transform: translateX(-50%); }
   .meter { position: relative; height: 8px; border-radius: 99px; background: rgba(127,127,127,.2); overflow: hidden; }
-  .meter-fill { position: absolute; inset: 0 auto 0 0; border-radius: 99px; background: var(--c); }
-  .meter-tick { position: absolute; top: 0; bottom: 0; width: 1.500px; background: var(--ha-card-background, #fff); }
-  .dots { display: flex; align-items: center; gap: 5px; }
-  .dot { width: 11px; height: 11px; border-radius: 50%; background: rgba(127,127,127,.25); }
+  .meter-fill { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 99px; background: var(--c); }
+  .meter-tick { position: absolute; top: 0; bottom: 0; width: 1.5px; background: var(--ha-card-background, #fff); }
+  .dots { display: flex; align-items: center; }
+  .dot { width: 11px; height: 11px; margin-right: 5px; border-radius: 50%; background: rgba(127,127,127,.25); }
   .dot.on { background: var(--c); }
   .dots .muted { margin-left: 4px; }
-  .cycle { display: flex; gap: 3px; }
-  .cycle-seg { flex: 1 1 0; height: 8px; border-radius: 3px; background: var(--c); opacity: .3; }
+  .cycle { display: flex; }
+  .cycle-seg { flex: 1 1 0; height: 8px; margin-left: 3px; border-radius: 3px; background: var(--c); opacity: .3; }
+  .cycle-seg:first-child { margin-left: 0; }
   .cycle-seg.lv-none { background: rgba(127,127,127,.5); }
   .cycle-seg.past { opacity: .55; }
   .cycle-seg.now { opacity: 1; box-shadow: 0 0 0 1.5px var(--primary-text-color); }
 
-  .spray { display: flex; flex-direction: column; gap: 7px; width: 100%; padding: 2px 0 14px; }
-  .spray-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; }
-  .spray-title { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--primary-text-color); --icon-hole: var(--ha-card-background, #fff); }
+  .spray { display: block; width: 100%; padding: 2px 0 14px; }
+  .spray-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; margin-bottom: 7px; }
+  .spray-title { display: inline-flex; align-items: center; margin-right: 10px; font-size: 13px; font-weight: 500; color: var(--primary-text-color); --icon-hole: var(--ha-card-background, #fff); }
+  .spray-title .ic { margin-right: 6px; }
   .spray-summary { font-size: 12.5px; color: var(--secondary-text-color); }
   .spray-summary.open { color: var(--ok); font-weight: 500; }
   .spray-track { position: relative; display: block; height: 10px; border-radius: 99px; background: rgba(127,127,127,.18); }
   .win { position: absolute; top: 0; bottom: 0; border-radius: 99px; background: var(--ok); }
   .tick { position: absolute; top: 0; bottom: -15px; }
-  .tick i { position: absolute; top: 0; height: 10px; width: 1.500px; background: var(--ha-card-background, #fff); }
+  .tick i { position: absolute; top: 0; height: 10px; width: 1.5px; background: var(--ha-card-background, #fff); }
   .tick.now { left: 0; }
   .tick b { position: absolute; top: 12px; left: 0; font-size: 11px; font-weight: 400; color: var(--secondary-text-color); white-space: nowrap; }
-  .frost-mark { position: absolute; top: -3px; width: 16px; height: 16px; margin-left: -8px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: #3b7dc4; }
+  .frost-mark { position: absolute; top: -3px; width: 16px; height: 16px; margin-left: -8px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: #fff; background: #3b7dc4; }
 
-  .empty { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 18px 8px; }
+  .empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 18px 8px; }
+  .empty > * + * { margin-top: 6px; }
   .empty-art { color: var(--ok); }
 
   .flake { animation: drift 4s ease-in-out infinite alternate; }
   .flutter { animation: flutter 1.5s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
   @keyframes drift { from { transform: translate(-1.5px, -2px) rotate(0); } to { transform: translate(1.5px, 3px) rotate(40deg); } }
   @keyframes flutter { from { transform: translate(-2px, 1px) scaleX(1); } to { transform: translate(2px, -2px) scaleX(.72); } }
-  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 2px var(--c); } 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 45%, transparent); } }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 2px var(--c); } 50% { box-shadow: 0 0 0 4px rgba(var(--c-rgb), .45); } }
   @keyframes reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) {
     .flake, .flutter, .tile.lv-severe .vignette, .panel { animation: none; }
@@ -2017,8 +2097,8 @@ const CARD_STYLE = `
   }
   @container (min-width: 430px) {
     .tiles.n3, .tiles.n6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .tiles.n1 .tile { flex-direction: row; align-items: center; gap: 14px; }
-    .tiles.n1 .vignette { flex: 0 0 52%; }
+    .tiles.n1 .tile { display: flex; align-items: center; }
+    .tiles.n1 .vignette { flex: 0 0 52%; margin-right: 14px; }
     .tiles.n1 .tile-body { padding: 0; flex: 1; }
     .tiles.n1 .tile-title { font-size: 16px; }
   }
@@ -2027,7 +2107,7 @@ const CARD_STYLE = `
   }
   @container (max-width: 340px) {
     .root { padding: 12px; }
-    .tiles { gap: 10px; }
+    .tiles { grid-gap: 10px; }
   }
 `;
 
@@ -2042,8 +2122,8 @@ class MeteoSentinelleCard extends HTMLElement {
 
   /** Éditeur natif de Home Assistant, qui gère lui-même l'ordre d'initialisation. */
   static getConfigForm() {
-    const hass = document.querySelector?.("home-assistant")?.hass;
-    const labels = strings(hass).fields;
+    const root = document.querySelector ? document.querySelector("home-assistant") : null;
+    const labels = strings(root && root.hass).fields;
     return {
       schema: [
         { name: "title", selector: { text: {} } },
@@ -2069,13 +2149,13 @@ class MeteoSentinelleCard extends HTMLElement {
 
   setConfig(config) {
     if (!config) throw new Error("Invalid configuration");
-    this._config = { ...config };
+    this._config = Object.assign({}, config);
     this._signature = null;
     this._update();
   }
 
   getCardSize() {
-    const trees = this._view?.trees?.length || 2;
+    const trees = (this._view && this._view.trees.length) || 2;
     return 4 + Math.ceil(trees / 3) * 3;
   }
 
@@ -2110,19 +2190,22 @@ class MeteoSentinelleCard extends HTMLElement {
       JSON.stringify(this._config),
       this._selected,
       this._confirm,
-      this._hass.themes?.darkMode,
+      this._hass.themes && this._hass.themes.darkMode,
       language(this._hass),
       // Les délais affichés (« cette nuit », « demain ») vieillissent seuls.
       Math.floor(Date.now() / 300000),
     ];
     for (const list of [ids.risks, ids.stages, ids.spray, ids.season, ids.gdd]) {
-      for (const id of list) parts.push(this._hass.states[id]?.last_updated);
+      for (const id of list) parts.push((this._hass.states[id] || {}).last_updated);
     }
     return parts.join("|");
   }
 
   _update() {
     if (!this._hass || !this._config) return;
+    // Redessiner refermerait la liste que l'utilisateur est en train d'ouvrir.
+    const opened = this.shadowRoot.activeElement;
+    if (opened && opened.tagName === "SELECT") return;
     const ids = this._discover();
     const signature = this._computeSignature(ids);
     if (signature === this._signature) return;
@@ -2133,7 +2216,8 @@ class MeteoSentinelleCard extends HTMLElement {
     if (this._selected && !view.trees.some((tree) => tree.key === this._selected)) {
       this._selected = null;
     }
-    const focused = this.shadowRoot.activeElement?.dataset?.tree;
+    const active = this.shadowRoot.activeElement;
+    const focused = active && active.dataset && active.dataset.tree;
     this.shadowRoot.innerHTML = `<style>${CARD_STYLE}</style>${renderCard(
       this._hass,
       this._config,
@@ -2141,10 +2225,15 @@ class MeteoSentinelleCard extends HTMLElement {
       this._selected,
       this._confirm
     )}`;
-    this.shadowRoot.querySelector("ha-card")?.addEventListener("click", (event) => this._onClick(event));
+    const card = this.shadowRoot.querySelector("ha-card");
+    if (card) {
+      card.addEventListener("click", (event) => this._onClick(event));
+      card.addEventListener("change", (event) => this._onChange(event));
+    }
     if (focused) {
-      const key = window.CSS?.escape ? window.CSS.escape(focused) : focused;
-      this.shadowRoot.querySelector(`[data-tree="${key}"]`)?.focus();
+      const key = window.CSS && window.CSS.escape ? window.CSS.escape(focused) : focused;
+      const tile = this.shadowRoot.querySelector(`[data-tree="${key}"]`);
+      if (tile) tile.focus();
     }
   }
 
@@ -2152,8 +2241,18 @@ class MeteoSentinelleCard extends HTMLElement {
     this.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
   }
 
+  _onChange(event) {
+    const select = event.target;
+    if (!select.hasAttribute || !select.hasAttribute("data-stage")) return;
+    // Quitter la liste laisse la carte se redessiner avec le nouveau stade.
+    select.blur();
+    this._call("set_stage", { tree: select.dataset.sub, stage: select.value });
+  }
+
   _onClick(event) {
-    const target = event.target.closest?.("[data-act],[data-more],[data-close],[data-tree]");
+    const target = event.target.closest
+      ? event.target.closest("[data-act],[data-more],[data-close],[data-tree]")
+      : null;
     if (!target) return;
     const { act, more, tree } = target.dataset;
     if (act) {
@@ -2200,7 +2299,7 @@ class MeteoSentinelleCard extends HTMLElement {
       await this._hass.callService(DOMAIN, service, data);
     } catch (err) {
       this._fire("hass-notification", {
-        message: fill(strings(this._hass).call_failed, { message: err?.message || "" }),
+        message: fill(strings(this._hass).call_failed, { message: (err && err.message) || "" }),
       });
     }
   }
@@ -2221,3 +2320,5 @@ if (!window.customCards.some((card) => card.type === CARD_TYPE)) {
     documentationURL: "https://github.com/Sdavid66/Meteo-Sentinelle",
   });
 }
+
+})();

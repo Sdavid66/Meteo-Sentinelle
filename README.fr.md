@@ -227,8 +227,9 @@ Quand un seuil est franchi, le stade est **avancé et appliqué
 automatiquement**, et vous en êtes informé — notification et événement.
 Trois garde-fous :
 
-- **votre correction fait autorité.** Changez le stade à la main depuis
-  le `select` : il devient la nouvelle référence ;
+- **votre correction fait autorité.** Changez le stade depuis la carte ou le
+  `select` : il devient la nouvelle référence de la saison, et la suite se
+  compte à partir de lui ;
 - **l'avancement est monotone au sein d'une saison.** Le modèle ne fait
   jamais reculer un stade : un redoux ne « défait » pas une floraison
   constatée. Seul le repos hivernal remet le cycle à zéro ;
@@ -411,13 +412,14 @@ chose, et quand ?
   dangereux, la température prévue face aux seuils de dégâts, l'indice
   oïdium, le cycle du ravageur et les jalons où intervenir.
 - **Les gestes se déclarent depuis la carte** : « J'ai traité » et « Première
-  capture aujourd'hui », avec une seconde pression pour confirmer. Le lien
-  « Corriger le stade » ouvre l'entité du stade.
+  capture aujourd'hui », avec une seconde pression pour confirmer. Si l'arbre
+  n'en est pas là où le modèle le pense, la liste « Stade observé » le corrige.
 - **Les fenêtres de traitement** des 48 prochaines heures sont affichées en
   bas. Le message retient le premier créneau entre 7 h et 21 h.
 
 La carte suit le thème clair ou sombre et la langue de Home Assistant
-(français et anglais). Les arbres sont détectés automatiquement. L'éditeur
+(français et anglais). Elle est écrite pour fonctionner aussi sur les écrans
+muraux à navigateur ancien, comme le NSPanel Pro. Les arbres sont détectés automatiquement. L'éditeur
 visuel permet de changer le titre, de choisir les arbres affichés et de
 masquer les fenêtres de traitement :
 

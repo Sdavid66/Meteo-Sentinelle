@@ -72,7 +72,11 @@ async def async_register_card(hass: HomeAssistant) -> None:
         _LOGGER.debug("Chemin statique déjà enregistré : %s", err)
 
     version = _integration_version(hass)
-    add_extra_js_url(hass, f"{FRONTEND_URL}?v={version}")
+    url = f"{FRONTEND_URL}?v={version}"
+    add_extra_js_url(hass, url)
+    # Un navigateur trop ancien pour `import()` ne charge que cette seconde
+    # liste. Les autres ne la lisent pas, ou ignorent le double chargement.
+    add_extra_js_url(hass, url, es5=True)
     hass.data[_REGISTERED] = True
     _LOGGER.debug("Carte Lovelace publiée sur %s", FRONTEND_URL)
 

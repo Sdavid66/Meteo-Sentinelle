@@ -172,7 +172,7 @@
    * - `frost` : { level, min, t10?, t90?, inHours } ;
    * - `risks` : { modèle: { level, … attributs du résultat } }.
    */
-  function scenario({ phase = "growing", gdd = 500, trees = [], spray = null, lang = "fr", dark = false, recent = 6 }) {
+  function scenario({ phase = "growing", gdd = 500, trees = [], spray = null, lang = "fr", dark = false, recent = 6, inRest = false }) {
     const states = {};
     const entities = {};
     const add = (id, value, attributes, translation_key, device_id) => {
@@ -182,7 +182,7 @@
 
     add("sensor.sentinelle_saison", phase, {
       hemisphere: "north", latitude: 46.26, elevation: 836, season_start: "2026-01-01",
-      rest_start: "2026-10-16", rest_trigger: "calendar", trees_resting: [],
+      rest_start: "2026-10-16", rest_trigger: "calendar", in_rest: inRest, trees_resting: [],
     }, "season", "site");
     add("sensor.sentinelle_degres_jours", gdd, {
       season_year: 2026, base_temperature: 5.6, first_day: "2026-01-01", last_day: "2026-11-04",
@@ -224,7 +224,7 @@
         stageAttributes.next_stage_key = next.key;
         stageAttributes.next_stage = next.key;
         stageAttributes.next_stage_gdd = next.gdd;
-        stageAttributes.gdd_to_next_stage = Math.max(0, next.gdd - treeGdd);
+        stageAttributes.gdd_to_next_stage = Math.max(0, next.gdd - (inRest ? 0 : treeGdd));
       }
       if (bloom) {
         stageAttributes.bloom_date = bloom;
@@ -340,8 +340,9 @@
       scenario({
         ...o,
         phase: "winter_rest",
-        gdd: 12,
-        recent: 0.2,
+        inRest: true,
+        gdd: 1176,
+        recent: 3,
         trees: [
           { id: "pommier", name: "Pommier", crop: "apple", stage: "dormant", frost: { min: 3 }, risks: { codling_moth: { awaiting: false } } },
           { id: "abricotier", name: "Abricotier", crop: "apricot", stage: "dormant", frost: { min: 3 } },

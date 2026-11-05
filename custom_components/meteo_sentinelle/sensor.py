@@ -207,14 +207,18 @@ class StageSensor(MeteoSentinelleTreeEntity, SensorEntity):
             ),
             "gdd_total": round(gdd.total, 1),
             "gdd_offset": tree.gdd_offset,
+            "gdd_shift": round(tree.shift_for(gdd.season_year), 1),
         }
         if following is not None:
             next_stage, threshold = following
             attributes["next_stage"] = STAGE_LABELS.get(next_stage, next_stage)
             attributes["next_stage_key"] = next_stage
             attributes["next_stage_gdd"] = threshold
-            attributes["gdd_to_next_stage"] = round(
-                max(0.0, threshold - (gdd.total + tree.gdd_offset)), 1
+            attributes["gdd_to_next_stage"] = phenology.gdd_to_stage(
+                threshold,
+                gdd.total,
+                tree.effective_offset(gdd.season_year),
+                self.coordinator.season.in_rest,
             )
         if frost is not None:
             attributes["t10"] = getattr(frost, "t10", None)
@@ -344,6 +348,9 @@ class SeasonSensor(MeteoSentinelleSiteEntity, SensorEntity):
             "elevation": climate.elevation,
             "season_start": info.season_start.isoformat(),
             "rest_start": info.rest_start.isoformat() if info.rest_start else None,
+            # Date de repos passée, saison suivante pas encore commencée : le
+            # cumul de degrés-jours ne dit plus rien du délai avant la reprise.
+            "in_rest": info.in_rest,
             "rest_trigger": info.trigger,
             "trees_resting": [
                 tree.display_name

@@ -455,6 +455,10 @@ chaque état du système, donc elle ne se redessine que si l'un de ses capteurs 
 changé. `tests/card_demo.html` l'affiche sans Home Assistant, sur les scénarios
 de `tests/card_fixtures.js`, que `tests/test_card.js` parcourt aussi.
 
+Le fichier étant servi sans compilation, il s'en tient à ES2017 et à une feuille
+de style sans fonctionnalité récente : un écran mural sous Android 8 rejetterait
+sinon le fichier entier, et la carte « n'existerait pas ». La CI le vérifie.
+
 ### Saisons : le stade porte l'état de repos
 
 `models/season.py` déduit du lieu (`hass.config.latitude`, `elevation`) le

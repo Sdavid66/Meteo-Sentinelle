@@ -160,6 +160,8 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                     # Le stade vient d'être repris de la configuration : le
                     # repos de la saison reste à appliquer à la nouvelle espèce.
                     tree.rest_season = None
+                    tree.stage_shift = 0.0
+                    tree.stage_shift_season = None
             self.trees[subentry.subentry_id] = tree
 
     def tree(self, subentry_id: str) -> Tree | None:
@@ -259,8 +261,30 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         tree.stage = stage
         tree.stage_auto_applied = False
         tree.stage_changed_at = dt_util.utcnow()
-        if stage in phenology.BLOOM_STAGES and tree.bloom_date is None:
+
+        # Pendant le repos, le cumul est celui de l'année écoulée : il n'y a
+        # rien à recaler, le compte repart de zéro avec la nouvelle saison.
+        if self.season.in_rest:
+            tree.stage_shift = 0.0
+            tree.stage_shift_season = None
+        else:
+            tree.stage_shift = phenology.correction_shift(
+                tree.crop, stage, self.gdd.total, tree.gdd_offset
+            )
+            tree.stage_shift_season = self.gdd.season_year
+
+        if phenology.is_before_bloom(tree.crop, stage):
+            # L'arbre n'a pas encore fleuri : la floraison enregistrée et ce qui
+            # en a été déduit ne tiennent plus. Une observation déclarée reste.
+            tree.bloom_date = None
+            tree.biofix = {
+                pest: biofix
+                for pest, biofix in tree.biofix.items()
+                if not biofix.get("estimated")
+            }
+        elif stage in phenology.BLOOM_STAGES and tree.bloom_date is None:
             tree.bloom_date = dt_util.utcnow()
+
         await self.async_save_state()
         await self.async_request_refresh()
 
@@ -806,14 +830,13 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             return
 
         for tree in self.trees.values():
+            offset = tree.effective_offset(self.gdd.season_year)
             if tree.auto_advance:
                 proposed = phenology.propose_advance(
-                    tree.crop, tree.stage, self.gdd.total, tree.gdd_offset
+                    tree.crop, tree.stage, self.gdd.total, offset
                 )
             elif tree.resting:
-                proposed = phenology.wake_stage(
-                    tree.crop, self.gdd.total, tree.gdd_offset
-                )
+                proposed = phenology.wake_stage(tree.crop, self.gdd.total, offset)
             else:
                 continue
             if proposed is None:

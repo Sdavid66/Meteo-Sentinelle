@@ -523,6 +523,46 @@ check(_annual[0] == {"key": crops.OFF_SEASON, "gdd": None, "t10": None},
       "le hors saison n'a ni seuil de chaleur ni sensibilité au gel")
 check(phenology.stage_path("generic") == [], "culture générique : pas de parcours")
 
+# Correction manuelle : le stade observé devient la nouvelle référence.
+_shift = phenology.correction_shift("apple", "green_tip", 800.0)
+check(_shift == 130 - 800, "le cumul de l'arbre est replacé sur le seuil du stade observé")
+check(phenology.propose_advance("apple", "green_tip", 800.0, _shift) is None,
+      "un stade plus précoce que prévu n'est pas écrasé au calcul suivant")
+check(phenology.propose_advance("apple", "green_tip", 871.0, _shift) == "half_inch_green",
+      "et l'arbre repart de là quand la chaleur arrive")
+_late = phenology.correction_shift("apple", "full_bloom", 300.0)
+check(phenology.propose_advance("apple", "full_bloom", 300.0, _late) is None,
+      "un stade plus avancé que prévu tient aussi")
+_rest = phenology.correction_shift("apple", crops.DORMANT, 800.0)
+check(phenology.propose_advance("apple", crops.DORMANT, 800.0, _rest) is None,
+      "un arbre remis en dormance y reste")
+check(phenology.propose_advance("apple", crops.DORMANT, 895.0, _rest) == "silver_tip",
+      "jusqu'à son premier seuil, compté à partir de là")
+_vine = phenology.correction_shift("vine", "dormant", 800.0)
+check(phenology.propose_advance("vine", "dormant", 800.0, _vine) is None,
+      "le stade de repos de la vigne, qui a un seuil, tient de la même façon")
+check(phenology.is_before_bloom("apple", "green_tip") and phenology.is_before_bloom("apple", crops.DORMANT),
+      "bourgeons et dormance précèdent la floraison")
+check(not phenology.is_before_bloom("apple", "first_bloom"), "la floraison ne se précède pas elle-même")
+check(not phenology.is_before_bloom("vine", "first_leaves"), "sans floraison suivie, rien à effacer")
+
+_fixed = Tree(subentry_id="f", name="F", crop="apple", gdd_offset=10.0)
+_fixed.stage_shift, _fixed.stage_shift_season = -500.0, 2026
+check(_fixed.effective_offset(2026) == -490.0, "le recalage s'ajoute au décalage de l'arbre")
+check(_fixed.effective_offset(2027) == 10.0, "il ne survit pas à la saison suivante")
+_copy = Tree(subentry_id="f", name="F", crop="apple")
+_copy.restore_state(_fixed.state_dict())
+check(_copy.stage_shift == -500.0 and _copy.stage_shift_season == 2026, "il survit à un redémarrage")
+_fixed.enter_rest(2026, datetime(2026, 11, 4))
+check(_fixed.stage_shift == 0.0, "le repos l'efface")
+
+# Délai avant le prochain stade : le cumul de l'an passé ne compte plus au repos.
+check(phenology.gdd_to_stage(50, 1176.0, in_rest=True) == 50.0,
+      "en novembre, 1176 °C·j de l'an passé n'annoncent pas une reprise immédiate")
+check(phenology.gdd_to_stage(90, 40.0) == 50.0, "en saison, le cumul courant compte")
+check(phenology.gdd_to_stage(90, 500.0) == 0.0, "un seuil dépassé ne donne pas un délai négatif")
+check(phenology.gdd_to_stage(90, 40.0, offset=10.0) == 40.0, "le décalage de l'arbre s'applique")
+
 # Passage de saison : ni réveil au 1er janvier, ni retour en arrière.
 _old = phenology.GddState(season_year=2026, total=1800.0, last_day="2026-12-31")
 _rolled = phenology.roll_season(_old, 2027)
