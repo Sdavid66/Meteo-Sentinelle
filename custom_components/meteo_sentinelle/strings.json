@@ -297,7 +297,7 @@
   "services": {
     "log_treatment": {
       "name": "Log a treatment",
-      "description": "Records a spray application and works out how long the crop stays protected.",
+      "description": "Logs an application and works out until when the crop is protected. A reminder is sent the day before the protection ends, then when it ends or is washed off by rain.",
       "fields": {
         "target": {
           "name": "Target",
@@ -483,6 +483,18 @@
     "notify_stage_advice": "This change was applied automatically and alters the frost thresholds used for this tree. If it does not match what you observe, correct it from the growth stage entity: your correction takes precedence. You can also turn off automatic advancement for this tree.",
     "notify_rest_title": "{tree} — winter rest",
     "notify_rest_advice": "The season is over at your location: disease and pest models are paused for this tree and its seasonal counters have been reset. They resume on their own once enough warmth has built up in spring. If this does not match what you observe, correct the growth stage: your correction takes precedence.",
+    "notify_treatment_soon_title": "{tree} — {model}: protection ending soon",
+    "notify_treatment_expired_title": "{tree} — {model}: treatment to renew",
+    "notify_treatment_washed_title": "{tree} — {model}: treatment washed off by rain",
+    "notify_treatment_soon": "The protection from the treatment of {applied} ends on {until}.",
+    "notify_treatment_expired": "The protection from the treatment of {applied} has ended.",
+    "notify_treatment_washed": "{rain} mm of rain have fallen since the treatment of {applied}: the protection is considered lost.",
+    "notify_treatment_product": "Product applied: {product}.",
+    "notify_treatment_risk": "Current risk: {level}.",
+    "notify_treatment_no_risk": "No risk reported right now.",
+    "notify_treatment_window_open": "Conditions allow spraying right now.",
+    "notify_treatment_window": "Next spray window: {when}.",
+    "notify_treatment_how": "Once it is done, log the treatment from the Météo Sentinelle card: a new reminder will be scheduled.",
     "stage_not_set": "not set",
     "detail_frost_min_air": "minimum expected {temperature} °C in the shade",
     "detail_frost_min_ground": "minimum expected {temperature} °C at ground level",

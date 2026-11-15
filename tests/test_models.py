@@ -523,6 +523,55 @@ check(_annual[0] == {"key": crops.OFF_SEASON, "gdd": None, "t10": None},
       "le hors saison n'a ni seuil de chaleur ni sensibilité au gel")
 check(phenology.stage_path("generic") == [], "culture générique : pas de parcours")
 
+# Rappels de traitement : la veille, puis à la fin, une seule fois chacun.
+_t0 = datetime(2026, 6, 10, 12, 0)
+_sulphur = treatments.Treatment(target="powdery_mildew", product="Soufre",
+                                applied_at=_t0, residual_days=7)
+check(treatments.pending_reminder(_sulphur, _t0 + timedelta(days=5)) is None,
+      "à deux jours de l'échéance : pas encore de rappel")
+check(treatments.pending_reminder(_sulphur, _t0 + timedelta(days=6, hours=1))
+      == treatments.REASON_EXPIRING, "la veille de l'échéance : préavis")
+treatments.mark_reminded(_sulphur, treatments.REASON_EXPIRING)
+check(treatments.pending_reminder(_sulphur, _t0 + timedelta(days=6, hours=2)) is None,
+      "le préavis n'est émis qu'une fois")
+check(treatments.pending_reminder(_sulphur, _t0 + timedelta(days=7, hours=1))
+      == treatments.REASON_EXPIRED, "à l'échéance : traitement à renouveler")
+treatments.mark_reminded(_sulphur, treatments.REASON_EXPIRED)
+check(treatments.pending_reminder(_sulphur, _t0 + timedelta(days=30)) is None,
+      "et une seule fois")
+
+_washed = treatments.Treatment(target="late_blight", product="", applied_at=_t0,
+                               residual_days=10, rainfast_mm=20)
+_washed.add_rain(21)
+check(treatments.pending_reminder(_washed, _t0 + timedelta(days=1))
+      == treatments.REASON_WASHED_OFF, "lessivé : rappel sans attendre l'échéance")
+treatments.mark_reminded(_washed, treatments.REASON_WASHED_OFF)
+check(_washed.notice_sent and _washed.end_sent,
+      "la fin de protection rend le préavis sans objet")
+check(treatments.pending_reminder(_washed, _t0 + timedelta(days=9, hours=6)) is None,
+      "un traitement lessivé ne donne pas de préavis ensuite")
+
+_brief = treatments.Treatment(target="codling_moth", product="", applied_at=_t0,
+                              residual_days=2)
+check(treatments.pending_reminder(_brief, _t0 + timedelta(days=1, hours=6)) is None,
+      "rémanence courte : pas de préavis, il suivrait de trop près l'application")
+check(treatments.pending_reminder(_brief, _t0 + timedelta(days=2, hours=1))
+      == treatments.REASON_EXPIRED, "mais bien le rappel à l'échéance")
+
+_reloaded = treatments.Treatment.from_dict(_sulphur.to_dict())
+check(_reloaded.notice_sent and _reloaded.end_sent,
+      "les rappels émis survivent à un redémarrage")
+_legacy = treatments.Treatment.from_dict({"target": "late_blight",
+                                         "applied_at": _t0.isoformat()})
+check(_legacy is not None and not _legacy.end_sent,
+      "un enregistrement d'avant les rappels se relit sans erreur")
+check(treatments.protection_state(_sulphur, _t0)["residual_days"] == 7,
+      "la rémanence est exposée, pour préremplir le renouvellement")
+check(treatments.protection_state(None, _t0)["residual_days"] is None,
+      "et absente sans traitement")
+check(set(treatments.REMINDER_REASONS) >= {"expired", "washed_off"},
+      "les motifs de fin reprennent les états de protection")
+
 # Correction manuelle : le stade observé devient la nouvelle référence.
 _shift = phenology.correction_shift("apple", "green_tip", 800.0)
 check(_shift == 130 - 800, "le cumul de l'arbre est replacé sur le seuil du stade observé")
@@ -896,7 +945,11 @@ else:
     _blueprints = sorted(_BP_DIR.glob("*.yaml"))
     check(len(_blueprints) >= 2, "au moins deux blueprints sont fournis")
 
-    _KNOWN_EVENTS = {"meteo_sentinelle_risk_changed", "meteo_sentinelle_stage_advanced"}
+    _KNOWN_EVENTS = {
+        "meteo_sentinelle_risk_changed",
+        "meteo_sentinelle_stage_advanced",
+        "meteo_sentinelle_treatment_due",
+    }
 
     for _path in _blueprints:
         _doc = _yaml.load(_path.read_text(encoding="utf-8"), Loader=_BlueprintLoader)
@@ -969,6 +1022,9 @@ else:
     _PAIRS = [
         ("frost_protection.yaml", "protection_gel.yaml"),
         ("risk_alerts.yaml", "alerte_meteo_sentinelle.yaml"),
+        ("spray_window.yaml", "fenetre_traitement.yaml"),
+        ("codling_moth_trap.yaml", "piege_carpocapse.yaml"),
+        ("treatment_reminder.yaml", "rappel_traitement.yaml"),
     ]
 
     def _structure(doc):
@@ -1006,7 +1062,8 @@ else:
               f"{_en_name} / {_fr_name} : même mode d'exécution")
 
     # Les événements écoutés doivent correspondre aux constantes du code.
-    check({const.EVENT_RISK_CHANGED, const.EVENT_STAGE_ADVANCED} == _KNOWN_EVENTS,
+    check({const.EVENT_RISK_CHANGED, const.EVENT_STAGE_ADVANCED,
+           const.EVENT_TREATMENT_DUE} == _KNOWN_EVENTS,
           "les événements des blueprints correspondent à ceux de const.py")
 
 

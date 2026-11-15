@@ -149,9 +149,11 @@
     "Pommes de terre": "Potatoes",
   };
 
+  const EN_PRODUCTS = { Soufre: "Sulphur", "Bouillie bordelaise": "Bordeaux mixture" };
+
   const NO_PROTECTION = {
     status: "none", product: null, applied_at: null, protected_until: null,
-    hours_remaining: 0, days_remaining: 0, rain_since_mm: 0, rainfast_mm: null,
+    hours_remaining: 0, days_remaining: 0, rain_since_mm: 0, rainfast_mm: null, residual_days: null,
   };
 
   /** Un état de capteur, tel que le frontend le reçoit. */
@@ -241,7 +243,10 @@
       for (const model of CROP_MODELS[tree.crop]) {
         const wanted = model === "frost" ? tree.frost || {} : tree.risks?.[model] || {};
         const level = wanted.level || "none";
-        const protection = wanted.protection || (model === "frost" ? undefined : NO_PROTECTION);
+        let protection = wanted.protection || (model === "frost" ? undefined : NO_PROTECTION);
+        if (protection && lang === "en" && EN_PRODUCTS[protection.product]) {
+          protection = Object.assign({}, protection, { product: EN_PRODUCTS[protection.product] });
+        }
         const attributes = { ...common, model };
         if (protection) attributes.protection = protection;
 
@@ -355,7 +360,7 @@
         ...o,
         gdd: 505,
         trees: [
-          { id: "golden", name: "Golden", crop: "apple", stage: "full_bloom", bloomDaysAgo: 2, frost: { level: "severe", min: -3.4, t10: -2.2, t90: -3.9, inHours: 14 } , risks: { codling_moth: { dd: 2, biofix: null, awaiting: true }, powdery_mildew: { level: "watch", index: 30 } } },
+          { id: "golden", name: "Golden", crop: "apple", stage: "full_bloom", bloomDaysAgo: 2, frost: { level: "severe", min: -3.4, t10: -2.2, t90: -3.9, inHours: 14 } , risks: { codling_moth: { dd: 2, biofix: null, awaiting: true }, powdery_mildew: { level: "watch", index: 30, protection: { status: "protected", product: "Soufre", applied_at: new Date(Date.now() - 2 * D).toISOString(), protected_until: new Date(Date.now() + 5 * D).toISOString(), hours_remaining: 120, days_remaining: 5, rain_since_mm: 3, rainfast_mm: 20, residual_days: 7 } } } },
           { id: "abricotier", name: "Abricotier", crop: "apricot", stage: "shuck_split", bloomDaysAgo: 32, frost: { level: "warning", min: -3.4, t10: -2.2, t90: -3.9, inHours: 14 } },
           { id: "cerisier", name: "Cerisier du fond", crop: "sweet_cherry", stage: "full_bloom", bloomDaysAgo: 3, frost: { level: "warning", min: -2.6, t10: -2.2, t90: -3.9, inHours: 14 } },
           { id: "peche", name: "Pêcher", crop: "peach", stage: "pink", gdd: 240, frost: { level: "watch", min: -2.5, t10: -3.9, t90: -9.4, inHours: 14 } },
@@ -368,8 +373,8 @@
         spray: { first: 3 * H },
         trees: [
           { id: "golden", name: "Golden", crop: "apple", stage: "full_bloom", bloomDaysAgo: 70, frost: { min: 13 }, risks: { codling_moth: { level: "severe", dd: 142, biofix: "2026-05-02", estimated: true }, powdery_mildew: { level: "warning", index: 70, interval: 7 } } },
-          { id: "conference", name: "Conférence", crop: "pear", stage: "petal_fall", bloomDaysAgo: 75, frost: { min: 13 }, risks: { codling_moth: { level: "watch", dd: 60, biofix: "2026-05-02" }, powdery_mildew: { level: "warning", index: 62, interval: 7, protection: { status: "protected", product: "Soufre", protected_until: new Date(Date.now() + 5 * D).toISOString(), days_remaining: 5 } } } },
-          { id: "tomates", name: "Tomates", crop: "tender_annual", stage: "growing", gdd: 1100, frost: { min: 13 }, risks: { late_blight: { level: "warning", hutton: true, days: 2 } } },
+          { id: "conference", name: "Conférence", crop: "pear", stage: "petal_fall", bloomDaysAgo: 75, frost: { min: 13 }, risks: { codling_moth: { level: "watch", dd: 60, biofix: "2026-05-02" }, powdery_mildew: { level: "warning", index: 62, interval: 7, protection: { status: "protected", product: "Soufre", applied_at: new Date(Date.now() - 5 * D).toISOString(), protected_until: new Date(Date.now() + 5 * D).toISOString(), hours_remaining: 120, days_remaining: 5, rain_since_mm: 3, rainfast_mm: 20, residual_days: 10 } } } },
+          { id: "tomates", name: "Tomates", crop: "tender_annual", stage: "growing", gdd: 1100, frost: { min: 13 }, risks: { late_blight: { level: "warning", hutton: true, days: 2, protection: { status: "washed_off", product: "Bouillie bordelaise", applied_at: new Date(Date.now() - 6 * D).toISOString(), protected_until: null, hours_remaining: 0, days_remaining: 0, rain_since_mm: 24, rainfast_mm: 20, residual_days: 10 } } } },
           { id: "vigne", name: "Vigne de la treille", crop: "vine", stage: "shoots_10cm", gdd: 1250, frost: { min: 13 }, risks: { grapevine_moth: { level: "warning", dd: 800 }, powdery_mildew: { level: "none", index: 10 } } },
           { id: "patates", name: "Pommes de terre", crop: "potato", stage: "emerged", gdd: 900, frost: { min: 13 }, risks: { colorado_potato_beetle: { level: "severe", dd: 140, biofix: "2026-06-10" } } },
           { id: "cerisier", name: "Burlat", crop: "sweet_cherry", stage: "post_bloom", bloomDaysAgo: 58, frost: { min: 13 }, risks: { cherry_fruit_fly: { level: "severe", dd: 560 } } },

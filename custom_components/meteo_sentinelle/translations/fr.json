@@ -297,7 +297,7 @@
   "services": {
     "log_treatment": {
       "name": "Enregistrer un traitement",
-      "description": "Déclare une application et calcule jusqu'à quand la culture est protégée.",
+      "description": "Déclare une application et calcule jusqu'à quand la culture est protégée. Un rappel est émis la veille de la fin de protection, puis à son terme ou si la pluie l'a lessivée.",
       "fields": {
         "target": {
           "name": "Cible",
@@ -483,6 +483,18 @@
     "notify_stage_advice": "Ce changement a été appliqué automatiquement et modifie les seuils de gel utilisés pour cet arbre. Si l'observation sur place ne correspond pas, corrigez le stade depuis l'entité de stade phénologique : votre correction fait autorité. Vous pouvez aussi désactiver l'avancement automatique pour cet arbre.",
     "notify_rest_title": "{tree} — repos hivernal",
     "notify_rest_advice": "La saison est terminée à votre emplacement : les modèles maladie et ravageurs sont suspendus pour cet arbre et ses compteurs saisonniers ont été remis à zéro. Ils reprendront d'eux-mêmes lorsque la chaleur accumulée au printemps sera suffisante. Si l'observation sur place ne correspond pas, corrigez le stade : votre correction fait autorité.",
+    "notify_treatment_soon_title": "{tree} — {model} : protection bientôt terminée",
+    "notify_treatment_expired_title": "{tree} — {model} : traitement à renouveler",
+    "notify_treatment_washed_title": "{tree} — {model} : traitement lessivé par la pluie",
+    "notify_treatment_soon": "La protection du traitement du {applied} se termine le {until}.",
+    "notify_treatment_expired": "La protection du traitement du {applied} est terminée.",
+    "notify_treatment_washed": "{rain} mm de pluie sont tombés depuis le traitement du {applied} : la protection est considérée comme perdue.",
+    "notify_treatment_product": "Produit appliqué : {product}.",
+    "notify_treatment_risk": "Risque actuel : {level}.",
+    "notify_treatment_no_risk": "Aucun risque signalé pour l'instant.",
+    "notify_treatment_window_open": "Les conditions permettent de traiter en ce moment.",
+    "notify_treatment_window": "Prochaine fenêtre de traitement : {when}.",
+    "notify_treatment_how": "Une fois le traitement fait, déclarez-le depuis la carte Météo Sentinelle : un nouveau rappel sera programmé.",
     "stage_not_set": "non renseigné",
     "detail_frost_min_air": "minimum attendu {temperature} °C sous abri",
     "detail_frost_min_ground": "minimum attendu {temperature} °C au niveau du sol",

@@ -20,20 +20,25 @@ import logging
 
 from homeassistant.components import persistent_notification
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
     EVENT_RISK_CHANGED,
     EVENT_STAGE_ADVANCED,
+    EVENT_TREATMENT_DUE,
     MODEL_FROST,
     MODEL_LATE_BLIGHT,
     MODEL_POWDERY_MILDEW,
     PEST_MODELS,
     RISK_LEVELS,
+    RISK_NONE,
     RISK_SEVERE,
     RISK_WARNING,
 )
 from .localize import Translator
+from .models.spray import next_daytime_slot
+from .models.treatments import REASON_EXPIRING, REASON_WASHED_OFF
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -278,3 +283,118 @@ def process_stage_advances(
             notification_id=f"{DOMAIN}_{advance['subentry_id']}_stage",
         )
     coordinator.pending_advances = []
+
+
+# ----------------------------------------------------------------------
+# Rappels de traitement
+# ----------------------------------------------------------------------
+
+
+def _treatment_notification_id(subentry_id: str, model: str) -> str:
+    # Un identifiant par couple (arbre, cible) : le préavis de la veille est
+    # remplacé par l'annonce de fin, au lieu de s'y ajouter.
+    return f"{DOMAIN}_{subentry_id}_{model}_treatment"
+
+
+def _local(value: str | None, pattern: str) -> str:
+    """Date ISO rendue dans le fuseau de l'installation."""
+    moment = dt_util.parse_datetime(value) if value else None
+    return dt_util.as_local(moment).strftime(pattern) if moment else "?"
+
+
+def build_reminder_payload(coordinator, reminder: dict, tr: Translator) -> dict:
+    """Contenu de l'événement de rappel, titre et message déjà rédigés.
+
+    `title` et `message` sont traduits ici pour qu'une automatisation puisse
+    les relayer tels quels, sans réécrire le texte dans chaque blueprint.
+    """
+    reason = reminder["reason"]
+    model_label = tr.treatment_target(reminder["model"])
+    applied = _local(reminder.get("applied_at"), "%d/%m")
+
+    if reason == REASON_EXPIRING:
+        title_key = "notify_treatment_soon_title"
+        lines = [
+            tr.text(
+                "notify_treatment_soon",
+                applied=applied,
+                until=_local(reminder.get("protected_until"), "%d/%m %H:%M"),
+            )
+        ]
+    elif reason == REASON_WASHED_OFF:
+        title_key = "notify_treatment_washed_title"
+        lines = [
+            tr.text(
+                "notify_treatment_washed",
+                applied=applied,
+                rain=f"{reminder.get('rain_since_mm') or 0:.0f}",
+            )
+        ]
+    else:
+        title_key = "notify_treatment_expired_title"
+        lines = [tr.text("notify_treatment_expired", applied=applied)]
+
+    if reminder.get("product"):
+        lines.append(tr.text("notify_treatment_product", product=reminder["product"]))
+
+    level = reminder.get("level")
+    at_risk = bool(level) and level != RISK_NONE
+    lines.append(
+        tr.text("notify_treatment_risk", level=tr.risk_level(level))
+        if at_risk
+        else tr.text("notify_treatment_no_risk")
+    )
+
+    # Seulement un créneau de jour : personne ne sort traiter à 1 h du matin.
+    now = dt_util.utcnow()
+    slot = next_daytime_slot(coordinator.spray.windows, now, dt_util.as_local)
+    window_open = slot is not None and slot[0] <= now
+    if window_open:
+        lines.append(tr.text("notify_treatment_window_open"))
+    elif slot is not None:
+        lines.append(
+            tr.text(
+                "notify_treatment_window",
+                when=dt_util.as_local(slot[0]).strftime("%d/%m %H:%M"),
+            )
+        )
+    lines.append(tr.text("notify_treatment_how"))
+
+    return {
+        **reminder,
+        "model_label": model_label,
+        "level_label": tr.risk_level(level) if level else None,
+        "next_window": slot[0].isoformat() if slot else None,
+        "window_open": window_open,
+        "title": tr.text(title_key, tree=reminder["tree"], model=model_label),
+        "message": "\n".join(lines),
+    }
+
+
+def process_treatment_reminders(
+    hass: HomeAssistant, coordinator, notifications_enabled: bool
+) -> None:
+    """Émet événement et notification pour chaque rappel de traitement dû."""
+    if not coordinator.pending_reminders:
+        return
+    tr = Translator(hass)
+    for reminder in coordinator.pending_reminders:
+        payload = build_reminder_payload(coordinator, reminder, tr)
+        hass.bus.async_fire(EVENT_TREATMENT_DUE, payload)
+        if notifications_enabled:
+            persistent_notification.async_create(
+                hass,
+                payload["message"],
+                title=payload["title"],
+                notification_id=_treatment_notification_id(
+                    reminder["subentry_id"], reminder["model"]
+                ),
+            )
+    coordinator.pending_reminders = []
+
+
+def dismiss_treatment_reminder(hass: HomeAssistant, subentry_id: str, model: str) -> None:
+    """Retire le rappel affiché : le traitement vient d'être refait ou effacé."""
+    persistent_notification.async_dismiss(
+        hass, _treatment_notification_id(subentry_id, model)
+    )

@@ -50,7 +50,14 @@ from .models.late_blight import LateBlightRisk, evaluate_late_blight_risk
 from .models.phenology import GddState
 from .models.powdery_mildew import PowderyMildewRisk, evaluate_powdery_mildew_risk
 from .models.spray import ForecastHour, SprayAdvice, find_spray_windows
-from .models.treatments import Treatment, adjusted_level, protection_state
+from .models.treatments import (
+    REASON_EXPIRED,
+    Treatment,
+    adjusted_level,
+    mark_reminded,
+    pending_reminder,
+    protection_state,
+)
 from .tree import Tree
 
 _LOGGER = logging.getLogger(__name__)
@@ -90,6 +97,10 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         self.pest_gdd: dict[str, GddState] = {}
         #: Avancements de stade appliqués au dernier cycle, à notifier.
         self.pending_advances: list[dict] = []
+        #: Rappels de traitement relevés, à notifier. Contrairement aux
+        #: avancements, ils ne sont jamais jetés au démarrage : leur émission
+        #: est mémorisée avec le traitement, donc rien ne se rejoue.
+        self.pending_reminders: list[dict] = []
         #: Couverture réelle de l'historique horaire, pour le diagnostic.
         self.history_coverage: dict = {}
         #: Créneaux de pulvérisation trouvés dans les prévisions.
@@ -201,6 +212,10 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             subentry_id, target = key.split("|", 1)
             treatment = Treatment.from_dict(data)
             if treatment is not None:
+                # Traitement enregistré avant l'arrivée des rappels et déjà
+                # terminé : le signaler des mois après n'aurait aucun sens.
+                if "end_sent" not in data and not treatment.is_active(dt_util.utcnow()):
+                    mark_reminded(treatment, REASON_EXPIRED)
                 self.treatments[(subentry_id, target)] = treatment
 
         last_rain = stored.get("last_rain_check")
@@ -351,9 +366,15 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         residual_days: float,
         rainfast_mm: float,
         subentry_ids: list[str] | None = None,
-    ) -> None:
+    ) -> list[str]:
+        """Enregistre une application et renvoie les arbres concernés.
+
+        Un nouveau traitement remplace le précédent, rappels compris : c'est
+        ce qui « reprogramme » le rappel suivant.
+        """
         ids = subentry_ids if subentry_ids is not None else list(self.trees)
         now = dt_util.utcnow()
+        treated: list[str] = []
         for subentry_id in ids:
             tree = self.trees.get(subentry_id)
             if tree is None or target not in tree.models:
@@ -365,19 +386,25 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                 residual_days=residual_days,
                 rainfast_mm=rainfast_mm,
             )
+            treated.append(subentry_id)
         await self.async_save_state()
         await self.async_request_refresh()
+        return treated
 
     async def async_clear_treatment(
         self, target: str | None = None, subentry_ids: list[str] | None = None
-    ) -> None:
+    ) -> list[tuple[str, str]]:
+        """Efface des traitements et renvoie les couples (arbre, cible) retirés."""
         ids = set(subentry_ids) if subentry_ids is not None else set(self.trees)
+        cleared: list[tuple[str, str]] = []
         for key in list(self.treatments):
             subentry_id, existing_target = key
             if subentry_id in ids and (target is None or existing_target == target):
                 self.treatments.pop(key, None)
+                cleared.append(key)
         await self.async_save_state()
         await self.async_request_refresh()
+        return cleared
 
     async def async_reset_mildew_index(
         self, subentry_ids: list[str] | None = None
@@ -706,7 +733,12 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             if due is None:
                 continue
             previous = tree.stage
-            if tree.enter_rest(due, now):
+            changed = tree.enter_rest(due, now)
+            # La saison est close : un traitement en cours ne protège plus
+            # rien, et un rappel de renouvellement en plein hiver serait absurde.
+            for key in [k for k in self.treatments if k[0] == tree.subentry_id]:
+                self.treatments.pop(key)
+            if changed:
                 self.pending_advances.append(
                     {
                         "subentry_id": tree.subentry_id,
@@ -718,6 +750,36 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                         "rest": True,
                     }
                 )
+
+    def _collect_reminders(self, results: dict[str, dict], now: datetime) -> None:
+        """Relève les rappels de traitement dus, une seule fois chacun."""
+        for (subentry_id, target), treatment in self.treatments.items():
+            tree = self.trees.get(subentry_id)
+            result = results.get(subentry_id, {}).get(target)
+            # Arbre au repos ou modèle désactivé : il n'y a rien à renouveler.
+            if tree is None or tree.resting or result is None:
+                continue
+            reason = pending_reminder(treatment, now)
+            if reason is None:
+                continue
+            mark_reminded(treatment, reason)
+            state = protection_state(treatment, now)
+            self.pending_reminders.append(
+                {
+                    "subentry_id": subentry_id,
+                    "tree": tree.display_name,
+                    "crop": tree.crop,
+                    "model": target,
+                    "reason": reason,
+                    "product": treatment.product,
+                    "applied_at": treatment.applied_at.isoformat(),
+                    "protected_until": treatment.expires_at.isoformat(),
+                    "residual_days": treatment.residual_days,
+                    "rain_since_mm": state["rain_since_mm"],
+                    "rainfast_mm": treatment.rainfast_mm,
+                    "level": getattr(result, "level", None),
+                }
+            )
 
     def _pest_total(self, pest: str) -> float | None:
         """Cumul saisonnier courant pour le barème d'un ravageur."""
@@ -870,6 +932,12 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         now = dt_util.utcnow()
 
         self.load_trees()
+        # Un arbre supprimé emporte ses traitements.
+        self.treatments = {
+            key: treatment
+            for key, treatment in self.treatments.items()
+            if key[0] in self.trees
+        }
 
         values: dict[str, float | None] = {}
         sources: dict[str, str] = {}
@@ -986,6 +1054,8 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
 
             self.protection[subentry_id] = tree_protection
             results[subentry_id] = tree_results
+
+        self._collect_reminders(results, now)
 
         self.update_interval = timedelta(
             minutes=(

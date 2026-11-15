@@ -361,5 +361,26 @@ advice = spray.find_spray_windows([], now=BASE)
 check(advice.current is None and "no_forecast" in advice.blocking,
       "sans prévision, le modèle le dit au lieu de conclure")
 
+# Proposer de sortir traiter : seulement de jour.
+_DAY = datetime(2026, 6, 10)
+def _at(hour, day=0):
+    return _DAY + timedelta(days=day, hours=hour)
+
+_night = [spray.SprayWindow(_at(22), _at(23, 0) + timedelta(hours=3))]
+check(spray.next_daytime_slot(_night, _at(20)) is None,
+      "un créneau tout de nuit n'est pas proposé")
+_dawn = [spray.SprayWindow(_at(1), _at(9))]
+check(spray.next_daytime_slot(_dawn, _at(0)) == (_at(7), _at(9)),
+      "un créneau à cheval sur l'aube est proposé à partir de 7 h")
+_open = [spray.SprayWindow(_at(8), _at(12))]
+check(spray.next_daytime_slot(_open, _at(9, 0) + timedelta(minutes=20))[0]
+      == _at(9) + timedelta(minutes=20), "un créneau de jour déjà ouvert vaut maintenant")
+_two = [spray.SprayWindow(_at(22), _at(23)), spray.SprayWindow(_at(10, 1), _at(15, 1))]
+check(spray.next_daytime_slot(_two, _at(21))[0] == _at(10, 1),
+      "le créneau de nuit est sauté au profit du suivant")
+check(spray.next_daytime_slot(_open, _at(9), lambda moment: moment + timedelta(hours=14)) is None,
+      "c'est l'heure locale qui décide de ce qui est de jour")
+check(spray.next_daytime_slot([], _at(9)) is None, "sans créneau, rien à proposer")
+
 
 print(f"\n{_checks} vérifications passées.")

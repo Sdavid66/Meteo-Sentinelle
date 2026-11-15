@@ -51,6 +51,12 @@ RAIN_THRESHOLD_MM = 0.2
 #: d'une heure isolée n'est pas exploitable en pratique.
 MIN_WINDOW_HOURS = 2
 
+#: Heures où l'on propose réellement de sortir traiter. Le modèle cherche
+#: quand le temps le permet, de jour comme de nuit : conseiller 1 h du matin
+#: n'aiderait personne.
+DAY_START_HOUR = 7
+DAY_END_HOUR = 21
+
 
 @dataclass
 class ForecastHour:
@@ -209,3 +215,23 @@ def find_spray_windows(
         )
 
     return advice
+
+
+def next_daytime_slot(
+    windows: list[SprayWindow], now: datetime, to_local=lambda moment: moment
+) -> tuple[datetime, datetime] | None:
+    """Premier moment de jour dans les créneaux, et la fin de ce créneau.
+
+    `to_local` ramène un instant dans le fuseau du site : c'est l'heure
+    locale qui décide de ce qui est « de jour ». Le début renvoyé vaut `now`
+    quand un créneau est déjà ouvert.
+    """
+    for window in windows:
+        moment = max(window.start, now)
+        while moment < window.end:
+            if DAY_START_HOUR <= to_local(moment).hour < DAY_END_HOUR:
+                return moment, window.end
+            moment = (moment + timedelta(hours=1)).replace(
+                minute=0, second=0, microsecond=0
+            )
+    return None

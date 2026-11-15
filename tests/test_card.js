@@ -169,6 +169,10 @@ check(rankOrder(summer.alerts), "les messages vont du plus urgent au moins urgen
 const golden = summer.trees.find((tree) => tree.key === "golden");
 check(golden.growth.phase === "fruit", "pleine floraison il y a 70 jours : l'arbre porte des fruits");
 check(golden.stageLabel === "Fruits en croissance", "et son libellé le dit");
+const blight = summer.alerts.find((alert) => alert.model === "late_blight");
+check(blight.action.startsWith("Traitement à renouveler."), "un traitement lessivé alors que le risque est là est à renouveler");
+const tomato = summer.trees.find((tree) => tree.key === "tomates");
+check(tomato.risks.find((risk) => risk.model === "late_blight").ended, "et l'arbre le sait");
 const pear = summer.alerts.find((alert) => alert.model === "powdery_mildew");
 check(pear.action.includes("fenêtre"), "un risque non couvert renvoie vers la fenêtre de traitement");
 
@@ -216,15 +220,68 @@ console.log("\n--- gestes ---");
   hass.callService = async (domain, service, data) => calls.push({ domain, service, data });
   const card = render(hass);
 
-  await card._onAction("treat", "powdery_mildew", "golden");
-  check(calls.length === 0 && card._confirm === "treat|golden|powdery_mildew", "une première pression demande confirmation");
-  await card._onAction("treat", "powdery_mildew", "golden");
-  check(calls.length === 1 && calls[0].service === "log_treatment", "la seconde déclare le traitement");
+  // Déclarer un traitement : un formulaire prérempli, dans le détail de l'arbre.
+  card._selected = "golden";
+  await card._onAction("form", "powdery_mildew", "golden");
+  check(
+    card._form.days === 7 && card._form.mm === 20 && card._form.product === "",
+    "le formulaire reprend l'intervalle conseillé et les valeurs par défaut"
+  );
+  check(card.shadowRoot.innerHTML.includes('data-field="days"'), "il s'affiche dans le détail de l'arbre");
+  check(calls.length === 0, "l'ouvrir ne déclare rien");
+  card._onInput({ target: { dataset: { field: "product" }, type: "text", value: "  Soufre mouillable  " } });
+  card._onInput({ target: { dataset: { field: "days" }, type: "number", value: "10" } });
+  await card._onAction("save");
+  check(calls.length === 1 && calls[0].service === "log_treatment", "enregistrer déclare le traitement");
   check(calls[0].domain === "meteo_sentinelle" && calls[0].data.tree === "golden" && calls[0].data.target === "powdery_mildew", "avec la bonne cible et le bon arbre");
+  check(
+    calls[0].data.product === "Soufre mouillable" && calls[0].data.residual_days === 10 && calls[0].data.rainfast_mm === 20,
+    "et le produit et les durées saisis"
+  );
+  check(card._form === null, "puis le formulaire se referme");
+
+  card._selected = "golden";
+  await card._onAction("form", "powdery_mildew", "golden");
+  card._onInput({ target: { dataset: { field: "all" }, type: "checkbox", checked: true } });
+  card._onInput({ target: { dataset: { field: "days" }, type: "number", value: "abc" } });
+  await card._onAction("save");
+  const everyone = calls.pop().data;
+  check(
+    Array.isArray(everyone.tree) && everyone.tree.includes("golden") && everyone.tree.includes("conference") && !everyone.tree.includes("patates"),
+    "« tous les arbres concernés » envoie ceux que la cible concerne, pas les autres"
+  );
+  check(everyone.residual_days === 7, "une durée illisible retombe sur la valeur par défaut");
+
+  card._selected = "conference";
+  await card._onAction("form", "powdery_mildew", "conference");
+  check(
+    card._form.product === "Soufre" && card._form.days === 10,
+    "renouveler reprend le produit et la durée du traitement précédent"
+  );
+  await card._onAction("cancel");
+  check(card._form === null && calls.length === 1, "annuler ne déclare rien");
+
+  card._selected = "conference";
+  card._update(true);
+  const protectedDetail = card.shadowRoot.innerHTML;
+  check(protectedDetail.includes("encore 5 j") && protectedDetail.includes("pluie reçue : 3 sur 20 mm"), "un arbre protégé affiche le temps restant et la pluie reçue");
+  card._selected = "tomates";
+  card._update(true);
+  check(card.shadowRoot.innerHTML.includes("Traitement lessivé par la pluie (24 mm)."), "un traitement lessivé est annoncé dans le détail");
+
+  const typing = render(hass);
+  typing.shadowRoot.activeElement = { tagName: "INPUT" };
+  typing.shadowRoot.innerHTML = "saisie";
+  typing._signature = null;
+  typing._update();
+  check(typing.shadowRoot.innerHTML === "saisie", "une saisie en cours n'est pas interrompue par un redessin");
+  typing._update(true);
+  check(typing.shadowRoot.innerHTML !== "saisie", "un geste de l'utilisateur redessine quand même");
 
   await card._onAction("biofix", "codling_moth", "golden");
+  check(calls.length === 1 && card._confirm === "biofix|golden|codling_moth", "une première capture demande confirmation");
   await card._onAction("biofix", "codling_moth", "golden");
-  check(calls[1].service === "set_biofix" && calls[1].data.pest === "codling_moth", "la première capture déclare le biofix");
+  check(calls[1].service === "set_biofix" && calls[1].data.pest === "codling_moth", "la seconde pression déclare le biofix");
 
   card._onChange({
     target: {

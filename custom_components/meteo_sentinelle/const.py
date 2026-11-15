@@ -40,6 +40,8 @@ DEFAULT_NOTIFICATIONS = True
 
 EVENT_RISK_CHANGED = f"{DOMAIN}_risk_changed"
 EVENT_STAGE_ADVANCED = f"{DOMAIN}_stage_advanced"
+#: Rappel de traitement : protection bientôt terminée, terminée ou lessivée.
+EVENT_TREATMENT_DUE = f"{DOMAIN}_treatment_due"
 
 #: Niveaux à partir desquels une notification persistante est créée.
 NOTIFY_FROM_LEVEL = "warning"

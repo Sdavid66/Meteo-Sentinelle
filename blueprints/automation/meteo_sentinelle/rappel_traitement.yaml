@@ -1,0 +1,92 @@
+blueprint:
+  name: Météo Sentinelle — rappel de traitement
+  description: >-
+    Envoie une notification quand un traitement que vous avez déclaré arrive
+    à son terme : la veille de la fin de protection, à l'échéance, ou dès que
+    la pluie l'a lessivé.
+
+
+    Le message précise l'arbre, la cible, le produit appliqué, le risque du
+    moment et la prochaine fenêtre de traitement en journée. Déclarer le
+    nouveau traitement, depuis la carte ou l'action « Enregistrer un
+    traitement », programme le rappel suivant.
+
+
+    L'intégration crée déjà ces rappels dans les notifications de Home
+    Assistant : ce blueprint sert à les recevoir ailleurs, sur votre
+    téléphone par exemple.
+  domain: automation
+  author: Sdavid66
+  input:
+    notify_service:
+      name: Service de notification
+      description: >-
+        Par exemple notify.mobile_app_mon_telephone ou un service Telegram.
+      selector:
+        text:
+    reasons:
+      name: Moments du rappel
+      description: >-
+        La veille laisse le temps de trouver une fenêtre de traitement. Le
+        préavis n'existe pas pour une protection de moins de trois jours.
+      default:
+        - expiring_soon
+        - expired
+        - washed_off
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: La veille de la fin de protection
+              value: expiring_soon
+            - label: À la fin de la protection
+              value: expired
+            - label: Quand la pluie a lessivé le traitement
+              value: washed_off
+    models:
+      name: Cibles concernées
+      default:
+        - late_blight
+        - powdery_mildew
+        - codling_moth
+        - cherry_fruit_fly
+        - colorado_potato_beetle
+        - grapevine_moth
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Mildiou
+              value: late_blight
+            - label: Oïdium
+              value: powdery_mildew
+            - label: Carpocapse
+              value: codling_moth
+            - label: Mouche de la cerise
+              value: cherry_fruit_fly
+            - label: Doryphore
+              value: colorado_potato_beetle
+            - label: Tordeuse de la grappe
+              value: grapevine_moth
+
+mode: queued
+max: 25
+
+triggers:
+  - trigger: event
+    event_type: meteo_sentinelle_treatment_due
+
+variables:
+  reasons: !input reasons
+  models: !input models
+
+conditions:
+  - "{{ trigger.event.data.reason in reasons }}"
+  - "{{ trigger.event.data.model in models }}"
+
+actions:
+  # Titre et message arrivent déjà rédigés, dans la langue de Home Assistant.
+  - action: !input notify_service
+    data:
+      title: "{{ trigger.event.data.title }}"
+      message: "{{ trigger.event.data.message }}"

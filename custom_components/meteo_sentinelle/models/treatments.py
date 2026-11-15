@@ -16,6 +16,12 @@ Ce module est volontairement agnostique : aucune base de produits
 phytosanitaires n'est embarquée. L'utilisateur déclare la rémanence et
 la résistance au lavage correspondant à ce qu'il a appliqué, en se
 fiant à l'étiquette du produit.
+
+Déclarer un traitement programme aussi son **rappel** : savoir qu'on est
+protégé ne sert que si l'on apprend aussi quand on ne l'est plus. Deux
+moments sont signalés, une seule fois chacun : la veille de l'échéance,
+pour laisser le temps de trouver une fenêtre de traitement, et la fin de
+la protection — à l'échéance, ou plus tôt si la pluie l'a lessivée.
 """
 from __future__ import annotations
 
@@ -25,6 +31,17 @@ from datetime import datetime, timedelta
 #: Valeurs par défaut prudentes, à ajuster selon l'étiquette du produit.
 DEFAULT_RESIDUAL_DAYS = 7.0
 DEFAULT_RAINFAST_MM = 20.0
+
+#: Motifs d'un rappel. Les deux derniers reprennent les états de `status`.
+REASON_EXPIRING = "expiring_soon"
+REASON_EXPIRED = "expired"
+REASON_WASHED_OFF = "washed_off"
+REMINDER_REASONS = [REASON_EXPIRING, REASON_EXPIRED, REASON_WASHED_OFF]
+
+#: Préavis avant la fin de la protection.
+REMINDER_LEAD_HOURS = 24.0
+#: En deçà de cette rémanence, le préavis suivrait de trop près l'application.
+MIN_RESIDUAL_DAYS_FOR_NOTICE = 3.0
 
 
 @dataclass
@@ -37,6 +54,9 @@ class Treatment:
     residual_days: float = DEFAULT_RESIDUAL_DAYS
     rainfast_mm: float = DEFAULT_RAINFAST_MM
     rain_since_mm: float = 0.0
+    #: Rappels déjà émis. Persistés : un redémarrage ne doit pas les rejouer.
+    notice_sent: bool = False
+    end_sent: bool = False
 
     # --- Sérialisation pour le Store Home Assistant ---
 
@@ -58,6 +78,8 @@ class Treatment:
             residual_days=float(data.get("residual_days", DEFAULT_RESIDUAL_DAYS)),
             rainfast_mm=float(data.get("rainfast_mm", DEFAULT_RAINFAST_MM)),
             rain_since_mm=float(data.get("rain_since_mm", 0.0)),
+            notice_sent=bool(data.get("notice_sent", False)),
+            end_sent=bool(data.get("end_sent", False)),
         )
 
     # --- Logique de protection ---
@@ -114,6 +136,7 @@ def protection_state(
             "days_remaining": 0.0,
             "rain_since_mm": 0.0,
             "rainfast_mm": None,
+            "residual_days": None,
         }
 
     remaining = treatment.remaining_hours(now)
@@ -128,7 +151,31 @@ def protection_state(
         "days_remaining": round(remaining / 24.0, 2),
         "rain_since_mm": round(treatment.rain_since_mm, 1),
         "rainfast_mm": treatment.rainfast_mm,
+        "residual_days": treatment.residual_days,
     }
+
+
+def pending_reminder(treatment: Treatment, now: datetime) -> str | None:
+    """Rappel à émettre maintenant pour ce traitement, ou None."""
+    status = treatment.status(now)
+    if status != "protected":
+        return None if treatment.end_sent else status
+    if treatment.notice_sent or treatment.residual_days < MIN_RESIDUAL_DAYS_FOR_NOTICE:
+        return None
+    if treatment.remaining_hours(now) <= REMINDER_LEAD_HOURS:
+        return REASON_EXPIRING
+    return None
+
+
+def mark_reminded(treatment: Treatment, reason: str) -> None:
+    """Mémorise l'émission d'un rappel.
+
+    La fin de protection rend le préavis sans objet : il est marqué lui
+    aussi, pour qu'un traitement lessivé tôt ne déclenche pas les deux.
+    """
+    treatment.notice_sent = True
+    if reason != REASON_EXPIRING:
+        treatment.end_sent = True
 
 
 def adjusted_level(risk_level: str, treatment: Treatment | None, now: datetime) -> str:

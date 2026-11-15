@@ -1,0 +1,91 @@
+blueprint:
+  name: Météo Sentinelle — treatment reminder
+  description: >-
+    Sends a notification when a treatment you logged is running out: the day
+    before protection ends, when it ends, or as soon as rain has washed it
+    off.
+
+
+    The message gives the tree, the target, the product applied, the current
+    risk and the next daytime spray window. Logging the new treatment, from
+    the card or the "Log a treatment" action, schedules the next reminder.
+
+
+    The integration already creates these reminders in Home Assistant's
+    notifications: this blueprint is for receiving them elsewhere, on your
+    phone for instance.
+  domain: automation
+  author: Sdavid66
+  input:
+    notify_service:
+      name: Notification service
+      description: >-
+        For example notify.mobile_app_my_phone or a Telegram service.
+      selector:
+        text:
+    reasons:
+      name: When to remind
+      description: >-
+        The day before leaves time to find a spray window. There is no
+        advance notice for a protection shorter than three days.
+      default:
+        - expiring_soon
+        - expired
+        - washed_off
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: The day before protection ends
+              value: expiring_soon
+            - label: When protection ends
+              value: expired
+            - label: When rain has washed the treatment off
+              value: washed_off
+    models:
+      name: Targets
+      default:
+        - late_blight
+        - powdery_mildew
+        - codling_moth
+        - cherry_fruit_fly
+        - colorado_potato_beetle
+        - grapevine_moth
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Late blight
+              value: late_blight
+            - label: Powdery mildew
+              value: powdery_mildew
+            - label: Codling moth
+              value: codling_moth
+            - label: Cherry fruit fly
+              value: cherry_fruit_fly
+            - label: Colorado potato beetle
+              value: colorado_potato_beetle
+            - label: European grapevine moth
+              value: grapevine_moth
+
+mode: queued
+max: 25
+
+triggers:
+  - trigger: event
+    event_type: meteo_sentinelle_treatment_due
+
+variables:
+  reasons: !input reasons
+  models: !input models
+
+conditions:
+  - "{{ trigger.event.data.reason in reasons }}"
+  - "{{ trigger.event.data.model in models }}"
+
+actions:
+  # Title and message arrive ready-made, in Home Assistant's language.
+  - action: !input notify_service
+    data:
+      title: "{{ trigger.event.data.title }}"
+      message: "{{ trigger.event.data.message }}"

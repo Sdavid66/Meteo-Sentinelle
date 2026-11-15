@@ -8,7 +8,8 @@
   <b>English</b> · <a href="https://github.com/Sdavid66/Meteo-Sentinelle/blob/main/README.fr.md">Français</a>
 </p>
 
-A Home Assistant integration, installable through **HACS**, that predicts
+A Home Assistant integration, installable from the **Marketplace**
+(formerly HACS), that predicts
 **frost**, **plant disease** risk (late blight, powdery mildew...) and
 **pest** risk (codling moth, cherry fruit fly, Colorado potato beetle,
 European grapevine moth) from the sensors of **your weather station,
@@ -145,14 +146,25 @@ as the fallback.
   disease models need roughly 4 days of hourly history. If you exclude
   those entities from the recorder, only the frost model will work.
 
-## Installing through HACS
+## Installation
 
-Météo Sentinelle is part of the HACS default store, so there is no
-custom repository to add.
+Météo Sentinelle is part of the default catalog, so there is no custom
+repository to add.
+
+**Home Assistant 2026.11 or newer** — HACS has become the *Marketplace*,
+built into Home Assistant:
+
+1. Settings → Marketplace, search for "Météo Sentinelle" and install it.
+2. Settings → Devices & services → Add integration → "Météo Sentinelle".
+
+**Earlier versions** — with HACS:
 
 1. Open HACS and search for "Météo Sentinelle".
 2. Install it, then restart Home Assistant.
 3. Settings → Devices & services → Add integration → "Météo Sentinelle".
+
+In both cases, an **update** requires restarting Home Assistant, then
+reloading the page to get the updated card.
 
 ## Configuration
 
@@ -288,15 +300,18 @@ options) — a Home Assistant notification on every escalation, from the
 |---|---|
 | `meteo_sentinelle_risk_changed` | a risk level changes |
 | `meteo_sentinelle_stage_advanced` | a stage is advanced automatically |
+| `meteo_sentinelle_treatment_due` | a logged treatment is running out |
 
-The event data contains the tree, species, stage, model, previous and new
-level, an `escalated` boolean, and a ready-made `detail` string.
+The data of a risk change contains the tree, species, stage, model,
+previous and new level, an `escalated` boolean, and a ready-made `detail`
+string. The data of a treatment reminder is described under "Treatment
+tracking".
 
 ### Ready-made blueprints
 
-Four turnkey automations, installable in one click — no YAML to write.
-These blueprints are **not** delivered by HACS (which only installs
-`custom_components/`): they have to be imported once.
+Five turnkey automations, installable in one click — no YAML to write.
+These blueprints are **not** installed with the integration (only
+`custom_components/` is): they have to be imported once.
 
 **Frost protection** — warns you when the threshold is crossed, switches
 on a protection device (heating cable, sprinkler, smart plug) and
@@ -334,11 +349,18 @@ accuracy the treatment window depends on.
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Fcodling_moth_trap.yaml)
 
-French versions of all four blueprints are available in
+**Treatment reminder** — forwards to your phone the reminders for the
+treatments you logged: the day before protection ends, when it ends, or
+as soon as rain has washed the product off. The message gives the product
+applied, the current risk and the next spray window.
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Ftreatment_reminder.yaml)
+
+French versions of all five blueprints are available in
 `blueprints/automation/meteo_sentinelle/` (`protection_gel.yaml`,
-`alerte_meteo_sentinelle.yaml`, `fenetre_traitement.yaml` and
-`piege_carpocapse.yaml`) — blueprints cannot be translated by Home
-Assistant, so each language ships as its own file.
+`alerte_meteo_sentinelle.yaml`, `fenetre_traitement.yaml`,
+`piege_carpocapse.yaml` and `rappel_traitement.yaml`) — blueprints cannot
+be translated by Home Assistant, so each language ships as its own file.
 
 If the button does not work, copy the URL of the YAML file and import it
 from **Settings → Automations & scenes → Blueprints → Import blueprint**.
@@ -377,7 +399,7 @@ type: custom:meteo-sentinelle-card
 The card answers one question first: do I need to do something, and when?
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-detail-en.png" alt="A tree's detail in dark theme: season path, frost gauge and risks" width="420">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-detail-en.png" alt="A tree's detail: season path, observed stage list, frost gauge, treatment in progress and risks" width="420">
 </p>
 <p align="center"><em>A tree's detail. Sample data.</em></p>
 
@@ -392,9 +414,13 @@ The card answers one question first: do I need to do something, and when?
 - **Tapping a tree opens its detail**: the stages where frost is most dangerous,
   the forecast temperature against the damage thresholds, the powdery mildew
   index, the pest's cycle and the milestones to act on.
-- **Actions are declared from the card**: "I sprayed" and "First catch today",
-  with a second tap to confirm. If the tree isn't where the model thinks it is,
-  the "Observed stage" list corrects it.
+- **Actions are declared from the card.** "I sprayed" opens a small form
+  (product, protection length, wash-off) and schedules the renewal reminder.
+  "First catch today" takes a second tap to confirm. If the tree isn't where
+  the model thinks it is, the "Observed stage" list corrects it.
+- **A treated tree shows it**: a shield on its scene, then in the detail
+  "Protected until 20 Jun · 5 d left", the product and the rain received. Once
+  protection has ended and the risk is still there, the card says "To renew".
 - **Spray windows** for the next 48 hours are shown at the bottom. The message
   picks the first slot between 7 am and 9 pm.
 
@@ -573,11 +599,16 @@ The sensor state is the start time of the next slot, ready to use in an
 automation. Missing data is never read as favourable: with no wind
 forecast, no slot is offered, and the `blocking` attribute explains why.
 
-### Treatment tracking — "protected until"
+### Treatment tracking — "protected until" and reminder
 
 A model says "risk is high". A decision tool says "spray before
-Thursday". The `meteo_sentinelle.log_treatment` action records an
-application:
+Thursday", then reminds you when to do it again.
+
+**Logging a treatment.** The card is the easy way: in a tree's detail,
+"I sprayed" opens a form — product, protection length, rain total that
+washes the product off — with a checkbox to apply it to every tree
+concerned. The `meteo_sentinelle.log_treatment` action does the same from
+an automation:
 
 ```yaml
 action: meteo_sentinelle.log_treatment
@@ -589,11 +620,35 @@ data:
   rainfast_mm: 20
 ```
 
-The integration derives a **Late blight / powdery mildew protection**
-entity giving the end-of-protection date, accounting for both residual
+**What the integration derives.** A **… protection** entity per tree and
+per target gives the end-of-protection date, accounting for both residual
 activity **and wash-off**: past the declared rain total, protection is
 considered lost even if the residual period has not elapsed. While a
 protection is active, the displayed risk level is downgraded by one step.
+
+**The reminder.** Logging a treatment schedules its reminder:
+
+| When | Reminder |
+|---|---|
+| The day before protection ends | advance notice, time to find a spray window |
+| When protection ends | treatment to renew |
+| As soon as rain has washed the product off | immediate reminder, without waiting for the end date |
+
+Each reminder is a Home Assistant notification (it can be turned off with
+the others in the options) and a `meteo_sentinelle_treatment_due` event,
+which the "Treatment reminder" blueprint forwards to your phone. The
+message gives the product applied, the current risk and the next daytime
+spray window. Logging the new treatment dismisses the reminder and
+schedules the next one.
+
+The event carries `tree`, `model`, `reason` (`expiring_soon`, `expired`
+or `washed_off`), `product`, `applied_at`, `protected_until`,
+`rain_since_mm`, `level`, `next_window`, plus a ready-made `title` and
+`message` in Home Assistant's language.
+
+There is no advance notice for a protection shorter than three days, and
+no reminder in winter: when a tree enters rest, the season's treatments
+are cleared.
 
 Tracking is **per tree**: you can treat the apple today and the pear next
 week without the two getting mixed up.
@@ -644,9 +699,16 @@ Use this as an aid to vigilance, not as plant-health advice.
 - v1.1.1: fixed history reading, which had been failing silently since
   the beginning — the disease models and the degree-day accumulation
   finally work.
-- **v1.1.2 (current)**: pests added to the "all-risk alerts" blueprint
+- v1.1.2: pests added to the "all-risk alerts" blueprint
   (missing since v1.1.0); two new blueprints — spray window and codling
   moth trap reminder.
+- v1.2: seasons and winter rest according to the installation's location.
+- v1.3: new illustrated card — one scene per tree, following its stage
+  and showing what threatens it; stage correction from the card;
+  compatibility with wall panels running an old browser.
+- **v1.4 (current)**: logging a treatment from the card, with a renewal
+  reminder — the day before, when protection ends, or as soon as rain has
+  washed the product off.
 - Next: apple scab (Mills table), infection cohorts with latency for
   late blight, cultivar sensitivity, learning the degree day offset from
   the user's manual corrections.

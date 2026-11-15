@@ -10,7 +10,12 @@ from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import config_validation as cv
 
-from .alerting import process_risk_changes, process_stage_advances
+from .alerting import (
+    dismiss_treatment_reminder,
+    process_risk_changes,
+    process_stage_advances,
+    process_treatment_reminders,
+)
 from .const import (
     ATTR_DATE,
     ATTR_PEST,
@@ -235,12 +240,20 @@ def _async_setup_alerting(
                 tree.last_levels.setdefault(model, level)
     coordinator.pending_advances = []
 
+    # Un rappel de traitement reste dû après un redémarrage : ceux relevés
+    # par le premier calcul sont émis maintenant, pas jetés.
+    startup = {**entry.data, **entry.options}
+    process_treatment_reminders(
+        hass, coordinator, startup.get(CONF_NOTIFICATIONS, DEFAULT_NOTIFICATIONS)
+    )
+
     @callback
     def _handle_update() -> None:
         data = {**entry.data, **entry.options}
         enabled = data.get(CONF_NOTIFICATIONS, DEFAULT_NOTIFICATIONS)
         process_stage_advances(hass, coordinator, enabled)
         process_risk_changes(hass, coordinator, enabled)
+        process_treatment_reminders(hass, coordinator, enabled)
         # Une dégradation silencieuse des modèles vaut d'être signalée
         # au même moment que les risques : c'est le même cycle.
         async_check_history(
@@ -274,20 +287,25 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
     async def _log_treatment(call: ServiceCall) -> None:
         for coordinator in _coordinators(hass):
-            await coordinator.async_log_treatment(
+            treated = await coordinator.async_log_treatment(
                 target=call.data[ATTR_TARGET],
                 product=call.data.get(ATTR_PRODUCT, ""),
                 residual_days=call.data.get(ATTR_RESIDUAL_DAYS, DEFAULT_RESIDUAL_DAYS),
                 rainfast_mm=call.data.get(ATTR_RAINFAST_MM, DEFAULT_RAINFAST_MM),
                 subentry_ids=_resolve_trees(coordinator, call.data.get(ATTR_TREE)),
             )
+            # Le rappel « à renouveler » a fait son office.
+            for subentry_id in treated:
+                dismiss_treatment_reminder(hass, subentry_id, call.data[ATTR_TARGET])
 
     async def _clear_treatment(call: ServiceCall) -> None:
         for coordinator in _coordinators(hass):
-            await coordinator.async_clear_treatment(
+            cleared = await coordinator.async_clear_treatment(
                 target=call.data.get(ATTR_TARGET),
                 subentry_ids=_resolve_trees(coordinator, call.data.get(ATTR_TREE)),
             )
+            for subentry_id, target in cleared:
+                dismiss_treatment_reminder(hass, subentry_id, target)
 
     async def _reset_mildew(call: ServiceCall) -> None:
         for coordinator in _coordinators(hass):

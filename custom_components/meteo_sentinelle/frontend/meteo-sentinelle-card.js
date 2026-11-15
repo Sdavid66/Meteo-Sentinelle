@@ -172,6 +172,21 @@ const STRINGS = {
     treat_confirm: "Confirmer ?",
     clear_treat: "Effacer",
     first_catch: "Première capture aujourd'hui",
+    renew: "Renouveler",
+    renew_due: "Traitement à renouveler",
+    renew_short: "À renouveler",
+    protected_left_days: "encore {days} j",
+    protected_left_hours: "encore {hours} h",
+    rain_since: "pluie reçue : {rain} sur {limit} mm",
+    ended_expired: "Protection terminée le {date}.",
+    ended_washed: "Traitement lessivé par la pluie ({rain} mm).",
+    form_product: "Produit (facultatif)",
+    form_days: "Protège pendant (jours)",
+    form_mm: "Lessivé après (mm de pluie)",
+    form_all: "Appliquer aux {count} arbres concernés",
+    form_hint: "Durées à lire sur l'étiquette du produit. Un rappel arrive la veille, puis à la fin de la protection.",
+    form_save: "Enregistrer",
+    form_cancel: "Annuler",
     waiting_biofix: "En attente de la première observation au piège.",
     estimated_biofix: "Départ estimé le {date}, d'après la floraison.",
     declared_biofix: "Départ observé le {date}.",
@@ -317,6 +332,21 @@ const STRINGS = {
     treat_confirm: "Confirm?",
     clear_treat: "Clear",
     first_catch: "First catch today",
+    renew: "Renew",
+    renew_due: "Treatment to renew",
+    renew_short: "To renew",
+    protected_left_days: "{days} d left",
+    protected_left_hours: "{hours} h left",
+    rain_since: "rain so far: {rain} of {limit} mm",
+    ended_expired: "Protection ended on {date}.",
+    ended_washed: "Treatment washed off by rain ({rain} mm).",
+    form_product: "Product (optional)",
+    form_days: "Protects for (days)",
+    form_mm: "Washed off after (mm of rain)",
+    form_all: "Apply to the {count} trees concerned",
+    form_hint: "Read the durations on the product label. A reminder comes the day before, then when protection ends.",
+    form_save: "Save",
+    form_cancel: "Cancel",
     waiting_biofix: "Waiting for the first trap observation.",
     estimated_biofix: "Start estimated on {date}, from bloom.",
     declared_biofix: "Start observed on {date}.",
@@ -664,14 +694,20 @@ function buildView(hass, config, ids) {
     const names = computeTitle(s, attributes);
     const resting = REST_STAGES.includes(stageKey);
     const risks = entry.risks
-      .map((state) => ({
-        entityId: state.entity_id,
-        model: state.attributes.model,
-        level: LEVELS.includes(state.state) ? state.state : "none",
-        attributes: state.attributes,
-        protection: state.attributes.protection || null,
-        protectedNow: (state.attributes.protection || {}).status === "protected",
-      }))
+      .map((state) => {
+        const protection = state.attributes.protection || null;
+        const status = protection ? protection.status : "none";
+        return {
+          entityId: state.entity_id,
+          model: state.attributes.model,
+          level: LEVELS.includes(state.state) ? state.state : "none",
+          attributes: state.attributes,
+          protection,
+          protectedNow: status === "protected",
+          // Traitement arrivé à son terme ou lessivé : il reste à renouveler.
+          ended: status === "expired" || status === "washed_off",
+        };
+      })
       .sort((a, b) => rank(b.level) - rank(a.level));
 
     const label = growth.growth
@@ -834,15 +870,17 @@ function buildAlerts(hass, s, trees, sprayState) {
     }
 
     const allProtected = group.risks.every((item) => item.protectedNow);
+    const renewDue = !allProtected && group.risks.some((item) => item.ended);
     if (allProtected) {
       const until = group.risks
         .map((item) => (item.protection || {}).protected_until)
         .filter(Boolean)
         .sort()[0];
       action = until ? fill(s.protected_until, { date: formatDate(hass, until) }) : s.protected_short;
-    } else if (group.model !== "frost" && group.level !== "watch") {
+    } else if (group.model !== "frost" && (group.level !== "watch" || renewDue)) {
       action = sprayAdvice(hass, s, sprayState);
     }
+    if (renewDue) action = `${s.renew_due}. ${action}`.trim();
 
     return {
       key: group.key,
@@ -1585,10 +1623,15 @@ function renderTile(hass, view, tree, index, selected, dark) {
   if (tree.showCrop) sub.push(tree.cropLabel);
   if (tree.stageLabel) sub.push(tree.stageLabel);
 
+  // Un traitement terminé n'est signalé que si le risque est encore là :
+  // sans risque, il n'y a rien à faire dans l'immédiat.
+  const renew = active.some((risk) => risk.ended)
+    ? `<span class="chip lv-watch">${icon("spray", 13)}<span>${esc(s.renew_short)}</span></span>`
+    : "";
   const chips = active.length
     ? `<span class="chips">${active.slice(0, 2).map((risk) => renderChip(s, risk)).join("")}${
         active.length > 2 ? `<span class="chip more">+${active.length - 2}</span>` : ""
-      }</span>`
+      }${renew}</span>`
     : "";
 
   const harvest = tree.growth.remaining
@@ -1773,32 +1816,110 @@ function renderDisease(hass, s, tree, risk) {
   return `<div class="dots">${[0, 1].map((i) => `<span class="dot ${i < days ? `on lv-${risk.level === "none" ? "watch" : risk.level}` : ""}"></span>`).join("")}<span class="muted">${esc(fill(s.wet_days, { days }))}</span></div>`;
 }
 
-function renderRiskAction(hass, s, tree, risk, confirm) {
-  const buttons = [];
-  if (TREATABLE.includes(risk.model) && !tree.resting) {
-    const key = `treat|${tree.subentryId}|${risk.model}`;
-    if (risk.protectedNow) {
-      const until = (risk.protection || {}).protected_until;
-      buttons.push(
-        `<span class="protect">${icon("shield", 14)}${esc(until ? fill(s.protected_until, { date: formatDate(hass, until) }) : s.protected_short)}</span>`
-      );
-      buttons.push(`<button class="link" data-act="clear" data-model="${risk.model}" data-sub="${esc(tree.subentryId)}">${esc(s.clear_treat)}</button>`);
-    } else if (risk.level !== "none") {
-      buttons.push(
-        `<button class="btn ${confirm === key ? "confirm" : ""}" data-act="treat" data-model="${risk.model}" data-sub="${esc(tree.subentryId)}">${icon("spray", 14)}${esc(confirm === key ? s.treat_confirm : s.treat)}</button>`
-      );
-    }
-  }
-  if (risk.attributes.awaiting_biofix && !tree.resting) {
-    const key = `biofix|${tree.subentryId}|${risk.model}`;
-    buttons.push(
-      `<button class="btn ${confirm === key ? "confirm" : ""}" data-act="biofix" data-model="${risk.model}" data-sub="${esc(tree.subentryId)}">${esc(confirm === key ? s.treat_confirm : s.first_catch)}</button>`
-    );
-  }
-  return buttons.length ? `<div class="actions">${buttons.join("")}</div>` : "";
+/** Temps de protection restant : « encore 5 j », « encore 9 h ». */
+function protectionLeft(s, protection) {
+  const hours = protection.hours_remaining;
+  if (!isNumber(hours) || hours <= 0) return "";
+  if (hours >= 36) return fill(s.protected_left_days, { days: Math.round(hours / 24) });
+  return fill(s.protected_left_hours, { hours: Math.max(1, Math.round(hours)) });
 }
 
-function renderRisk(hass, view, tree, risk, confirm) {
+function renderTreatmentForm(s, view, risk, form) {
+  const concerned = view.trees.filter(
+    (tree) => !tree.resting && tree.risks.some((item) => item.model === risk.model)
+  ).length;
+  const all =
+    concerned > 1
+      ? `<label class="check"><input type="checkbox" data-field="all" ${form.all ? "checked" : ""}><span>${esc(fill(s.form_all, { count: concerned }))}</span></label>`
+      : "";
+  return `<div class="form">
+    <label class="field"><span>${esc(s.form_product)}</span>
+      <input type="text" data-field="product" maxlength="80" value="${esc(form.product)}"></label>
+    <div class="field-row">
+      <label class="field"><span>${esc(s.form_days)}</span>
+        <input type="number" inputmode="decimal" min="0.5" max="90" step="0.5" data-field="days" value="${esc(form.days)}"></label>
+      <label class="field"><span>${esc(s.form_mm)}</span>
+        <input type="number" inputmode="numeric" min="0" max="500" step="1" data-field="mm" value="${esc(form.mm)}"></label>
+    </div>
+    ${all}
+    <div class="muted small">${esc(s.form_hint)}</div>
+    <div class="actions">
+      <button class="btn confirm" data-act="save">${esc(s.form_save)}</button>
+      <button class="link" data-act="cancel">${esc(s.form_cancel)}</button>
+    </div>
+  </div>`;
+}
+
+/** Où en est le traitement de ce risque, et le geste pour le déclarer. */
+function renderTreatment(hass, s, view, tree, risk, form) {
+  if (form && form.key === `${tree.subentryId}|${risk.model}`) {
+    return renderTreatmentForm(s, view, risk, form);
+  }
+  const target = `data-model="${risk.model}" data-sub="${esc(tree.subentryId)}"`;
+  const open = (label) =>
+    `<button class="btn" data-act="form" ${target}>${icon("spray", 14)}${esc(label)}</button>`;
+  const clear = `<button class="link" data-act="clear" ${target}>${esc(s.clear_treat)}</button>`;
+  const protection = risk.protection || {};
+
+  if (risk.protectedNow) {
+    const until = protection.protected_until;
+    const headline = [
+      until ? fill(s.protected_until, { date: formatDate(hass, until) }) : s.protected_short,
+      protectionLeft(s, protection),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const detail = [
+      protection.product,
+      isNumber(protection.rainfast_mm) && protection.rainfast_mm > 0
+        ? fill(s.rain_since, {
+            rain: formatNumber(hass, protection.rain_since_mm || 0, 0),
+            limit: formatNumber(hass, protection.rainfast_mm, 0),
+          })
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return `<div class="treat">
+      <div class="protect">${icon("shield", 14)}<span>${esc(headline)}</span></div>
+      ${detail ? `<div class="muted small">${esc(detail)}</div>` : ""}
+      <div class="actions">${open(s.renew)}${clear}</div>
+    </div>`;
+  }
+
+  if (risk.ended) {
+    const text =
+      protection.status === "washed_off"
+        ? fill(s.ended_washed, { rain: formatNumber(hass, protection.rain_since_mm || 0, 0) })
+        : fill(s.ended_expired, { date: formatDate(hass, protection.protected_until) });
+    return `<div class="treat">
+      <div class="ended">${icon("spray", 14)}<span>${esc(text)}</span></div>
+      <div class="actions">${open(s.treat)}${clear}</div>
+    </div>`;
+  }
+
+  return `<div class="actions">${open(s.treat)}</div>`;
+}
+
+function renderRiskAction(hass, s, view, tree, risk, confirm, form) {
+  if (tree.resting) return "";
+  const waiting = Boolean(risk.attributes.awaiting_biofix);
+  const parts = [];
+  // Tant que l'insecte n'a pas été observé, il n'y a rien à traiter : seul un
+  // traitement déjà déclaré reste affiché.
+  if (TREATABLE.includes(risk.model) && (!waiting || risk.protectedNow || risk.ended)) {
+    parts.push(renderTreatment(hass, s, view, tree, risk, form));
+  }
+  if (waiting) {
+    const key = `biofix|${tree.subentryId}|${risk.model}`;
+    parts.push(
+      `<div class="actions"><button class="btn ${confirm === key ? "confirm" : ""}" data-act="biofix" data-model="${risk.model}" data-sub="${esc(tree.subentryId)}">${esc(confirm === key ? s.treat_confirm : s.first_catch)}</button></div>`
+    );
+  }
+  return parts.join("");
+}
+
+function renderRisk(hass, view, tree, risk, confirm, form) {
   const { s, gddState } = view;
   let body = "";
   if (risk.model === "frost") {
@@ -1820,14 +1941,16 @@ function renderRisk(hass, view, tree, risk, confirm) {
       <span class="pill">${esc(s.levels[risk.level])}</span>
     </span></button>
     ${body}
-    ${renderRiskAction(hass, s, tree, risk, confirm)}
+    ${renderRiskAction(hass, s, view, tree, risk, confirm, form)}
   </div>`;
 }
 
-function renderPanel(hass, view, tree, confirm) {
+function renderPanel(hass, view, tree, confirm, form, entering) {
   const { s } = view;
-  const risks = tree.risks.map((risk) => renderRisk(hass, view, tree, risk, confirm)).join("");
-  return `<div class="panel">
+  const risks = tree.risks
+    .map((risk) => renderRisk(hass, view, tree, risk, confirm, form))
+    .join("");
+  return `<div class="panel ${entering ? "entering" : ""}">
     <div class="panel-head">
       <div class="panel-title">${esc(tree.title)}</div>
       <button class="icon-btn" data-close aria-label="${esc(s.close)}">${icon("close", 16)}</button>
@@ -1893,7 +2016,7 @@ function renderSpray(hass, view) {
   </button>`;
 }
 
-function renderCard(hass, config, view, selected, confirm) {
+function renderCard(hass, config, view, selected, confirm, form, entering) {
   const { s, trees } = view;
   const dark = Boolean(hass.themes && hass.themes.darkMode);
   const title = config.title === undefined ? s.title : config.title;
@@ -1919,7 +2042,7 @@ function renderCard(hass, config, view, selected, confirm) {
     .map((tree, index) => {
       const open = tree.key === selected;
       const tile = renderTile(hass, view, tree, index, open, dark);
-      return open ? tile + renderPanel(hass, view, tree, confirm) : tile;
+      return open ? tile + renderPanel(hass, view, tree, confirm, form, entering) : tile;
     })
     .join("");
 
@@ -1989,7 +2112,7 @@ const CARD_STYLE = `
   .scene { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; }
   .temp { position: absolute; top: 7px; left: 7px; display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 600; color: #0d2b4a; background: rgba(255,255,255,.88); border-radius: 99px; padding: 3px 7px 3px 5px; }
   .temp .ic { margin-right: 3px; }
-  .shield { position: absolute; top: 7px; right: 7px; color: var(--ok); background: rgba(255,255,255,.9); border-radius: 50%; padding: 3px; --icon-hole: #fff; }
+  .shield { position: absolute; bottom: 7px; right: 7px; color: var(--ok); background: rgba(255,255,255,.9); border-radius: 50%; padding: 3px; --icon-hole: #fff; }
   .tile-body { display: block; padding: 8px 2px 2px; min-width: 0; }
   .tile-body > * + * { margin-top: 2px; }
   .tile-title { font-size: 14px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; overflow-wrap: anywhere; }
@@ -2001,7 +2124,8 @@ const CARD_STYLE = `
   .chip > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chip.more { padding: 3px 7px; }
 
-  .panel { grid-column: 1 / -1; padding: 14px; border-radius: 14px; background: var(--secondary-background-color, rgba(127,127,127,.09)); animation: reveal .18s ease-out; }
+  .panel { grid-column: 1 / -1; padding: 14px; border-radius: 14px; background: var(--secondary-background-color, rgba(127,127,127,.09)); }
+  .panel.entering { animation: reveal .18s ease-out; }
   .panel > * + * { margin-top: 14px; }
   .panel-head { display: flex; align-items: center; justify-content: space-between; }
   .panel-title { margin-right: 8px; font-size: 16px; font-weight: 600; min-width: 0; word-break: break-word; overflow-wrap: anywhere; }
@@ -2032,14 +2156,26 @@ const CARD_STYLE = `
   .risk-row { display: flex; align-items: center; }
   .risk-icon { width: 24px; height: 24px; margin-right: 8px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--c); background: rgba(var(--c-rgb), .14); --icon-hole: transparent; }
   .risk-name { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; margin-right: 8px; }
-  .risk > .actions { display: flex; flex-wrap: wrap; align-items: center; margin-right: -12px; margin-bottom: -8px; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; margin-right: -12px; margin-bottom: -8px; }
   .actions > * { margin: 0 12px 8px 0; }
   .btn { display: inline-block; font-size: 12.5px; font-weight: 500; line-height: 16px; padding: 7px 12px; border-radius: 99px; box-shadow: inset 0 0 0 1px var(--divider-color, rgba(127,127,127,.4)); }
   .btn .ic { display: inline-block; vertical-align: -3px; margin-right: 6px; }
   .btn:hover { background: rgba(127,127,127,.1); }
   .btn.confirm { color: var(--text-primary-color, #fff); background: var(--primary-color); box-shadow: none; }
   .protect { display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; color: var(--ok); --icon-hole: var(--ha-card-background, #fff); }
-  .protect .ic { margin-right: 5px; }
+  .protect .ic { margin-right: 5px; flex: none; }
+  .treat > * + *, .form > * + * { margin-top: 7px; }
+  .ended { display: flex; align-items: center; font-size: 12.5px; font-weight: 500; color: var(--watch); --icon-hole: var(--ha-card-background, #fff); }
+  .ended .ic { margin-right: 5px; flex: none; }
+  .form { padding: 10px 12px 12px; border-radius: 10px; background: var(--secondary-background-color, rgba(127,127,127,.09)); }
+  .field { display: block; }
+  .field > span { display: block; margin-bottom: 4px; font-size: 12px; color: var(--secondary-text-color); }
+  .field input { display: block; width: 100%; height: 38px; padding: 0 10px; box-sizing: border-box; font: inherit; font-size: 14px; color: var(--primary-text-color); background: var(--ha-card-background, var(--card-background-color, #fff)); border: 1px solid var(--divider-color, rgba(127,127,127,.4)); border-radius: 10px; }
+  ha-card.dark .field input { color-scheme: dark; }
+  .field-row { display: flex; align-items: flex-end; margin-right: -8px; }
+  .field-row > .field { flex: 1 1 0; min-width: 0; margin-right: 8px; }
+  .check { display: flex; align-items: center; font-size: 13px; }
+  .check input { flex: none; width: 18px; height: 18px; margin: 0 8px 0 0; }
   .gauge { position: relative; padding-top: 17px; }
   .gauge > * + * { margin-top: 3px; }
   .gauge-label { position: absolute; top: 0; font-size: 12px; font-weight: 600; white-space: nowrap; transform: translateX(-50%); }
@@ -2092,7 +2228,7 @@ const CARD_STYLE = `
   @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 2px var(--c); } 50% { box-shadow: 0 0 0 4px rgba(var(--c-rgb), .45); } }
   @keyframes reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) {
-    .flake, .flutter, .tile.lv-severe .vignette, .panel { animation: none; }
+    .flake, .flutter, .tile.lv-severe .vignette, .panel.entering { animation: none; }
     .tile { transition: none; }
   }
   @container (min-width: 430px) {
@@ -2142,6 +2278,8 @@ class MeteoSentinelleCard extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._selected = null;
     this._confirm = null;
+    //: Déclaration de traitement en cours de saisie, ou null.
+    this._form = null;
     this._signature = null;
     this._ids = null;
     this._idsFrom = null;
@@ -2190,6 +2328,7 @@ class MeteoSentinelleCard extends HTMLElement {
       JSON.stringify(this._config),
       this._selected,
       this._confirm,
+      this._form ? this._form.key : "",
       this._hass.themes && this._hass.themes.darkMode,
       language(this._hass),
       // Les délais affichés (« cette nuit », « demain ») vieillissent seuls.
@@ -2201,20 +2340,35 @@ class MeteoSentinelleCard extends HTMLElement {
     return parts.join("|");
   }
 
-  _update() {
+  /**
+   * Redessine la carte si quelque chose a changé.
+   *
+   * `force` vient d'un geste de l'utilisateur. Sans lui, on ne touche à rien
+   * pendant une saisie : redessiner refermerait la liste ouverte ou ferait
+   * perdre le champ en cours, puisque `hass` change à tout moment.
+   */
+  _update(force) {
     if (!this._hass || !this._config) return;
-    // Redessiner refermerait la liste que l'utilisateur est en train d'ouvrir.
-    const opened = this.shadowRoot.activeElement;
-    if (opened && opened.tagName === "SELECT") return;
+    const editing = this.shadowRoot.activeElement;
+    if (!force && editing && /^(SELECT|INPUT|TEXTAREA)$/.test(editing.tagName)) return;
     const ids = this._discover();
     const signature = this._computeSignature(ids);
-    if (signature === this._signature) return;
+    if (!force && signature === this._signature) return;
     this._signature = signature;
 
     const view = buildView(this._hass, this._config, ids);
     this._view = view;
     if (this._selected && !view.trees.some((tree) => tree.key === this._selected)) {
       this._selected = null;
+    }
+    // Le formulaire appartient au détail ouvert : il se ferme avec lui.
+    if (
+      this._form &&
+      !view.trees.some(
+        (tree) => tree.subentryId === this._form.sub && tree.key === this._selected
+      )
+    ) {
+      this._form = null;
     }
     const active = this.shadowRoot.activeElement;
     const focused = active && active.dataset && active.dataset.tree;
@@ -2223,12 +2377,19 @@ class MeteoSentinelleCard extends HTMLElement {
       this._config,
       view,
       this._selected,
-      this._confirm
+      this._confirm,
+      this._form,
+      // Le détail ne s'anime qu'à son ouverture : rejouer l'animation à chaque
+      // mise à jour ferait clignoter la carte.
+      this._selected !== this._shown
     )}`;
+    this._shown = this._selected;
     const card = this.shadowRoot.querySelector("ha-card");
     if (card) {
       card.addEventListener("click", (event) => this._onClick(event));
       card.addEventListener("change", (event) => this._onChange(event));
+      card.addEventListener("input", (event) => this._onInput(event));
+      card.addEventListener("keydown", (event) => this._onKeydown(event));
     }
     if (focused) {
       const key = window.CSS && window.CSS.escape ? window.CSS.escape(focused) : focused;
@@ -2241,9 +2402,70 @@ class MeteoSentinelleCard extends HTMLElement {
     this.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
   }
 
+  /** La saisie est gardée ici : un redessin de la carte ne la fait pas perdre. */
+  _onInput(event) {
+    const input = event.target;
+    const field = input && input.dataset ? input.dataset.field : null;
+    if (!field || !this._form) return;
+    this._form[field] = input.type === "checkbox" ? input.checked : input.value;
+  }
+
+  _onKeydown(event) {
+    const input = event.target;
+    if (event.key !== "Enter" || !input.dataset || !input.dataset.field) return;
+    if (input.type === "checkbox") return;
+    this._onInput(event);
+    this._saveForm();
+  }
+
+  _openForm(model, sub) {
+    const tree = this._view.trees.find((item) => item.subentryId === sub);
+    const risk = tree && tree.risks.find((item) => item.model === model);
+    if (!risk) return;
+    // Renouveler reprend ce qui avait été déclaré. Sinon, l'intervalle que
+    // le modèle conseille, ou les valeurs par défaut de l'intégration.
+    const last = risk.protection || {};
+    this._form = {
+      key: `${sub}|${model}`,
+      sub,
+      model,
+      product: last.product || "",
+      days: orElse(last.residual_days, risk.attributes.spray_interval_days || 7),
+      mm: orElse(last.rainfast_mm, 20),
+      all: false,
+    };
+    this._update(true);
+  }
+
+  _saveForm() {
+    const form = this._form;
+    if (!form) return;
+    const number = (value) => Number(String(value).replace(",", "."));
+    const days = number(form.days);
+    const mm = number(form.mm);
+    // « Tous les arbres » : ceux de cette carte que la cible concerne.
+    const trees = this._view.trees
+      .filter((tree) => !tree.resting && tree.risks.some((risk) => risk.model === form.model))
+      .map((tree) => tree.subentryId);
+    this._form = null;
+    this._update(true);
+    this._call("log_treatment", {
+      target: form.model,
+      tree: form.all && trees.length ? trees : form.sub,
+      product: String(form.product || "").trim().slice(0, 80),
+      residual_days: clamp(isNumber(days) && days > 0 ? days : 7, 0.5, 90),
+      rainfast_mm: clamp(isNumber(mm) && mm >= 0 ? mm : 20, 0, 500),
+    });
+  }
+
   _onChange(event) {
     const select = event.target;
-    if (!select.hasAttribute || !select.hasAttribute("data-stage")) return;
+    if (!select.hasAttribute) return;
+    if (select.hasAttribute("data-field")) {
+      this._onInput(event);
+      return;
+    }
+    if (!select.hasAttribute("data-stage")) return;
     // Quitter la liste laisse la carte se redessiner avec le nouveau stade.
     select.blur();
     this._call("set_stage", { tree: select.dataset.sub, stage: select.value });
@@ -2261,11 +2483,11 @@ class MeteoSentinelleCard extends HTMLElement {
       this._fire("hass-more-info", { entityId: more });
     } else if (target.hasAttribute("data-close")) {
       this._selected = null;
-      this._update();
+      this._update(true);
     } else if (tree !== undefined) {
       this._selected = this._selected === tree ? null : tree;
       this._confirm = null;
-      this._update();
+      this._update(true);
     }
   }
 
@@ -2274,12 +2496,25 @@ class MeteoSentinelleCard extends HTMLElement {
       this._call("clear_treatment", { target: model, tree });
       return;
     }
-    // Ces gestes modifient les calculs : une seconde pression les confirme,
-    // pour qu'un doigt qui passe ne déclare pas un traitement.
+    if (action === "form") {
+      this._openForm(model, tree);
+      return;
+    }
+    if (action === "cancel") {
+      this._form = null;
+      this._update(true);
+      return;
+    }
+    if (action === "save") {
+      this._saveForm();
+      return;
+    }
+    // Déclarer une première capture modifie les calculs : une seconde
+    // pression la confirme, pour qu'un doigt qui passe ne la déclare pas.
     const key = `${action}|${tree}|${model}`;
     if (this._confirm !== key) {
       this._confirm = key;
-      this._update();
+      this._update(true);
       clearTimeout(this._confirmTimer);
       this._confirmTimer = setTimeout(() => {
         this._confirm = null;
@@ -2289,8 +2524,7 @@ class MeteoSentinelleCard extends HTMLElement {
     }
     clearTimeout(this._confirmTimer);
     this._confirm = null;
-    this._update();
-    if (action === "treat") this._call("log_treatment", { target: model, tree });
+    this._update(true);
     if (action === "biofix") this._call("set_biofix", { pest: model, tree });
   }
 

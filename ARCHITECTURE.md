@@ -459,6 +459,20 @@ Le fichier étant servi sans compilation, il s'en tient à ES2017 et à une feui
 de style sans fonctionnalité récente : un écran mural sous Android 8 rejetterait
 sinon le fichier entier, et la carte « n'existerait pas ». La CI le vérifie.
 
+### Rappels de traitement : mémorisés avec le traitement
+
+Déclarer un traitement programme son rappel : la veille de la fin de
+protection, puis à son terme ou dès le lessivage. L'émission de chaque rappel
+est mémorisée **dans le traitement lui-même** (`notice_sent`, `end_sent`) et
+persistée avec lui. Trois conséquences recherchées : un redémarrage ne rejoue
+rien, un arrêt de Home Assistant pendant l'échéance ne fait pas perdre le
+rappel, et un nouveau traitement repart naturellement de zéro.
+
+Le coordinateur relève les rappels (`pending_reminders`), l'alerting les émet
+en événement `meteo_sentinelle_treatment_due` et en notification. Le texte est
+rédigé côté intégration et voyage dans l'événement (`title`, `message`) : un
+blueprint n'a rien à réécrire, et reste indépendant de la langue.
+
 ### Saisons : le stade porte l'état de repos
 
 `models/season.py` déduit du lieu (`hass.config.latitude`, `elevation`) le

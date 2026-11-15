@@ -51,6 +51,9 @@ class Translator:
         language = language or hass.config.language
         self._common = async_get_cached_translations(hass, language, "common", DOMAIN)
         self._entity = async_get_cached_translations(hass, language, "entity", DOMAIN)
+        self._selector = async_get_cached_translations(
+            hass, language, "selector", DOMAIN
+        )
 
     # ------------------------------------------------------------------
     # Gabarits de messages
@@ -101,6 +104,16 @@ class Translator:
     def risk_name(self, model: str) -> str:
         """« Risque de gel » / « Frost risk » — l'intitulé du modèle."""
         return self.name("sensor", f"{model}_risk")
+
+    def treatment_target(self, model: str) -> str:
+        """« Oïdium » / « Powdery mildew » — la cible d'un traitement.
+
+        Le libellé vient du sélecteur de l'action « Enregistrer un
+        traitement » : c'est le même mot que l'utilisateur y a choisi.
+        """
+        return self._selector.get(
+            f"component.{DOMAIN}.selector.treatable_model.options.{model}", model
+        )
 
     def pest_stage(self, stage: str | None) -> str:
         """« Éclosion généralisée » / « Peak egg hatch ».

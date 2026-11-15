@@ -8,7 +8,8 @@
   <a href="https://github.com/Sdavid66/Meteo-Sentinelle/blob/main/README.md">English</a> · <b>Français</b>
 </p>
 
-Intégration Home Assistant, installable via **HACS**, qui prédit les
+Intégration Home Assistant, installable depuis la **Marketplace**
+(anciennement HACS), qui prédit les
 risques de **gel**, de **maladies des plantes** (mildiou, oïdium...) et
 de **ravageurs** (carpocapse, mouche de la cerise, doryphore, tordeuse
 de la grappe) à partir des capteurs de **votre station météo, quelle
@@ -155,15 +156,28 @@ quelle autre source de capteurs Home Assistant peut servir de secours.
   Si vous excluez ces entités du recorder, seul le modèle de gel
   fonctionnera.
 
-## Installation via HACS
+## Installation
 
-Météo Sentinelle fait partie du magasin HACS par défaut : il n'y a aucun
+Météo Sentinelle fait partie du catalogue par défaut : il n'y a aucun
 dépôt personnalisé à ajouter.
+
+**Home Assistant 2026.11 ou plus récent** — HACS y est devenu la
+*Marketplace*, intégrée à Home Assistant :
+
+1. Paramètres → Marketplace, rechercher « Météo Sentinelle » et
+   installer.
+2. Paramètres → Appareils et services → Ajouter une intégration →
+   « Météo Sentinelle ».
+
+**Versions antérieures** — avec HACS :
 
 1. Ouvrir HACS et rechercher « Météo Sentinelle ».
 2. Installer, puis redémarrer Home Assistant.
 3. Paramètres → Appareils et services → Ajouter une intégration →
    « Météo Sentinelle ».
+
+Dans les deux cas, une **mise à jour** demande de redémarrer Home
+Assistant, puis de recharger la page pour retrouver la carte à jour.
 
 ## Configuration
 
@@ -302,16 +316,19 @@ partir du niveau « alerte » :
 |---|---|
 | `meteo_sentinelle_risk_changed` | un niveau de risque change |
 | `meteo_sentinelle_stage_advanced` | un stade est avancé automatiquement |
+| `meteo_sentinelle_treatment_due` | un traitement déclaré arrive à son terme |
 
-Les données de l'événement contiennent l'arbre, l'espèce, le stade, le
-modèle, l'ancien et le nouveau niveau, un booléen `escalated` et un
-`detail` déjà rédigé.
+Les données d'un changement de risque contiennent l'arbre, l'espèce, le
+stade, le modèle, l'ancien et le nouveau niveau, un booléen `escalated`
+et un `detail` déjà rédigé. Celles d'un rappel de traitement sont
+décrites dans « Suivi des traitements ».
 
 ### Blueprints prêts à l'emploi
 
-Quatre automatisations toutes faites, à installer en un clic — aucun
-YAML à écrire. Ces blueprints ne sont **pas** livrés par HACS (qui
-n'installe que `custom_components/`) : il faut les importer une fois.
+Cinq automatisations toutes faites, à installer en un clic — aucun
+YAML à écrire. Ces blueprints ne sont **pas** installés avec
+l'intégration (seul `custom_components/` l'est) : il faut les importer
+une fois.
 
 **Protection contre le gel** — prévient au franchissement du seuil,
 allume un dispositif de protection (câble chauffant, aspersion, prise
@@ -350,10 +367,19 @@ est exactement la précision dont dépend la fenêtre de traitement.
 
 [![Ouvrir dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Fpiege_carpocapse.yaml)
 
-Les versions anglaises de ces quatre blueprints existent aussi
-(`frost_protection.yaml`, `risk_alerts.yaml`, `spray_window.yaml` et
-`codling_moth_trap.yaml`) : un blueprint ne peut pas être traduit par
-Home Assistant, chaque langue est donc un fichier.
+**Rappel de traitement** — relaie vers votre téléphone les rappels des
+traitements que vous avez déclarés : la veille de la fin de protection,
+à l'échéance, ou dès que la pluie a lessivé le produit. Le message donne
+le produit appliqué, le risque du moment et la prochaine fenêtre de
+traitement.
+
+[![Ouvrir dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSdavid66%2FMeteo-Sentinelle%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeteo_sentinelle%2Frappel_traitement.yaml)
+
+Les versions anglaises de ces cinq blueprints existent aussi
+(`frost_protection.yaml`, `risk_alerts.yaml`, `spray_window.yaml`,
+`codling_moth_trap.yaml` et `treatment_reminder.yaml`) : un blueprint ne
+peut pas être traduit par Home Assistant, chaque langue est donc un
+fichier.
 
 Si le bouton ne fonctionne pas, copier l'URL du fichier YAML depuis
 `blueprints/automation/meteo_sentinelle/` et l'importer depuis
@@ -373,7 +399,7 @@ l'intégration ; les arbres se modifient depuis leur propre entrée.
 
 ## Carte de tableau de bord
 
-Une carte est livrée **avec l'intégration** : aucun dépôt HACS
+Une carte est livrée **avec l'intégration** : aucun dépôt
 supplémentaire, aucune ressource Lovelace à déclarer, et elle se met à
 jour en même temps que le composant.
 
@@ -396,7 +422,7 @@ La carte répond d'abord à une question : est-ce que je dois faire quelque
 chose, et quand ?
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-detail.png" alt="Le détail d'un arbre en thème sombre : parcours de la saison, jauge de gel et risques" width="420">
+  <img src="https://raw.githubusercontent.com/Sdavid66/Meteo-Sentinelle/main/images/card-detail.png" alt="Le détail d'un arbre : parcours de la saison, liste du stade observé, jauge de gel, traitement en cours et risques" width="420">
 </p>
 <p align="center"><em>Le détail d'un arbre. Données d'exemple.</em></p>
 
@@ -411,9 +437,15 @@ chose, et quand ?
 - **Toucher un arbre ouvre son détail** : les stades où le gel est le plus
   dangereux, la température prévue face aux seuils de dégâts, l'indice
   oïdium, le cycle du ravageur et les jalons où intervenir.
-- **Les gestes se déclarent depuis la carte** : « J'ai traité » et « Première
-  capture aujourd'hui », avec une seconde pression pour confirmer. Si l'arbre
-  n'en est pas là où le modèle le pense, la liste « Stade observé » le corrige.
+- **Les gestes se déclarent depuis la carte.** « J'ai traité » ouvre un
+  petit formulaire (produit, durée de protection, lessivage) et programme
+  le rappel de renouvellement. « Première capture aujourd'hui » se confirme
+  d'une seconde pression. Si l'arbre n'en est pas là où le modèle le pense,
+  la liste « Stade observé » le corrige.
+- **Un arbre traité le montre** : un bouclier sur sa scène, puis dans le
+  détail « Protégé jusqu'au 20 juin · encore 5 j », le produit et la pluie
+  reçue. Quand la protection est terminée et que le risque est encore là,
+  la carte indique « À renouveler ».
 - **Les fenêtres de traitement** des 48 prochaines heures sont affichées en
   bas. Le message retient le premier créneau entre 7 h et 21 h.
 
@@ -602,11 +634,17 @@ utilisable dans une automatisation. Une donnée manquante n'est jamais
 lue comme favorable : sans prévision de vent, aucun créneau n'est
 proposé, et l'attribut `blocking` dit pourquoi.
 
-### Suivi des traitements — « protégé jusqu'à »
+### Suivi des traitements — « protégé jusqu'à » et rappel
 
 Un modèle dit « le risque est élevé ». Un outil de décision dit
-« traitez avant jeudi ». Le service `meteo_sentinelle.log_treatment`
-enregistre une application :
+« traitez avant jeudi », puis vous rappelle quand recommencer.
+
+**Déclarer un traitement.** Le plus simple est la carte : dans le détail
+d'un arbre, « J'ai traité » ouvre un formulaire — produit, durée de
+protection, cumul de pluie qui lessive le produit — avec une case pour
+l'appliquer à tous les arbres concernés. L'action
+`meteo_sentinelle.log_treatment` fait la même chose depuis une
+automatisation :
 
 ```yaml
 action: meteo_sentinelle.log_treatment
@@ -618,12 +656,36 @@ data:
   rainfast_mm: 20
 ```
 
-L'intégration en déduit une entité **Protection mildiou / oïdium**
-donnant la date de fin de protection, en tenant compte de la rémanence
-**et du lessivage** : au-delà du cumul de pluie déclaré, la protection
-est considérée comme perdue même si la rémanence n'est pas écoulée.
-Tant qu'une protection est active, le niveau de risque affiché est
-rétrogradé d'un cran.
+**Ce que l'intégration en déduit.** Une entité **Protection …** par
+arbre et par cible donne la date de fin de protection, en tenant compte
+de la rémanence **et du lessivage** : au-delà du cumul de pluie déclaré,
+la protection est considérée comme perdue même si la rémanence n'est pas
+écoulée. Tant qu'une protection est active, le niveau de risque affiché
+est rétrogradé d'un cran.
+
+**Le rappel.** Déclarer un traitement programme son rappel :
+
+| Moment | Rappel |
+|---|---|
+| La veille de la fin de protection | préavis, le temps de trouver une fenêtre de traitement |
+| À la fin de la protection | traitement à renouveler |
+| Dès que la pluie a lessivé le produit | rappel immédiat, sans attendre l'échéance |
+
+Chaque rappel est une notification Home Assistant (désactivable avec les
+autres dans les options) et un événement `meteo_sentinelle_treatment_due`,
+que le blueprint « Rappel de traitement » relaie vers votre téléphone.
+Le message indique le produit appliqué, le risque du moment et la
+prochaine fenêtre de traitement en journée. Déclarer le nouveau
+traitement retire le rappel et programme le suivant.
+
+L'événement porte `tree`, `model`, `reason` (`expiring_soon`, `expired`
+ou `washed_off`), `product`, `applied_at`, `protected_until`,
+`rain_since_mm`, `level`, `next_window`, ainsi qu'un `title` et un
+`message` déjà rédigés dans la langue de Home Assistant.
+
+Il n'y a pas de préavis pour une protection de moins de trois jours, ni
+de rappel en hiver : à l'entrée en repos, les traitements de la saison
+sont effacés.
 
 Le suivi est **par arbre** : vous pouvez traiter le pommier aujourd'hui
 et le poirier la semaine prochaine sans que les deux se confondent.
@@ -678,9 +740,16 @@ en deçà d'un outil professionnel sur trois points :
 - v1.1.1 : correction de la lecture de l'historique, qui échouait
   silencieusement depuis l'origine — les modèles maladie et le cumul de
   degrés-jours fonctionnent enfin.
-- **v1.1.2 (actuelle)** : ravageurs ajoutés au blueprint « alertes tous
+- v1.1.2 : ravageurs ajoutés au blueprint « alertes tous
   risques » (manquants depuis la v1.1.0) ; deux nouveaux blueprints —
   fenêtre de traitement et rappel de pose du piège à carpocapse.
+- v1.2 : saisons et repos hivernal selon le lieu d'installation.
+- v1.3 : nouvelle carte illustrée — une scène par arbre, qui suit son
+  stade et montre ce qui le menace ; correction du stade depuis la carte ;
+  compatibilité avec les écrans muraux à navigateur ancien.
+- **v1.4 (actuelle)** : déclaration d'un traitement depuis la carte et
+  rappel de renouvellement — la veille, à l'échéance, ou dès que la pluie
+  a lessivé le produit.
 - Ensuite : tavelure du pommier (table de Mills), cohortes d'infection
   avec latence pour le mildiou, sensibilité variétale, apprentissage du
   décalage de degrés-jours sur les corrections manuelles.

@@ -8,8 +8,9 @@ log_treatment:
   description: >-
     Déclare une application de traitement. Le plugin en déduit jusqu'à
     quand la culture est protégée, en tenant compte de la rémanence et du
-    lessivage par la pluie. Renseignez ces deux valeurs d'après
-    l'étiquette du produit.
+    lessivage par la pluie, et programme le rappel correspondant : la
+    veille de la fin de protection, puis à son terme ou si la pluie l'a
+    lessivée. Renseignez les deux valeurs d'après l'étiquette du produit.
   fields:
     target:
       name: Cible
