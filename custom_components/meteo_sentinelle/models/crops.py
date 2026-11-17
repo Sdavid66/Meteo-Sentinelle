@@ -30,6 +30,15 @@ DORMANT = "dormant"
 OFF_SEASON = "off_season"
 REST_STAGES = {DORMANT, OFF_SEASON}
 
+#: Stades de la fructification, communs aux arbres fruitiers. Ils suivent la
+#: floraison dans le temps et non plus les degrés-jours : voir `phenology`.
+FRUIT_SET = "fruit_set"
+FRUIT_GROWTH = "fruit_growth"
+RIPENING = "ripening"
+HARVEST = "harvest"
+POST_HARVEST = "post_harvest"
+FRUIT_STAGES = [FRUIT_SET, FRUIT_GROWTH, RIPENING, HARVEST, POST_HARVEST]
+
 
 @dataclass(frozen=True)
 class Crop:
@@ -122,6 +131,31 @@ _DORMANT_HARDINESS: dict[str, StageThresholds] = {
     "sweet_cherry": (-23.0, -28.0),
 }
 
+
+def _fruiting(stages: dict[str, StageThresholds]) -> dict[str, StageThresholds]:
+    """Seuils de gel des stades de fructification d'une espèce.
+
+    Les tables WSU s'arrêtent au jeune fruit. Tant qu'il y a des fruits sur
+    l'arbre, leur dernière ligne reste donc la référence : c'est la plus
+    proche de ce qui est exposé.
+
+    Après la récolte, il ne reste que le bois et les bourgeons de l'année
+    suivante, pas encore endurcis. On leur prête la tenue d'un bourgeon qui
+    sort de dormance — un ordre de grandeur prudent, comme pour la rusticité
+    du bois en repos. Ce stade ne s'applique jamais tout seul : tant que la
+    récolte n'a pas été déclarée, les fruits sont supposés sur l'arbre.
+    """
+    values = list(stages.values())
+    fruit, wood = values[-1], values[0]
+    return {
+        FRUIT_SET: fruit,
+        FRUIT_GROWTH: fruit,
+        RIPENING: fruit,
+        HARVEST: fruit,
+        POST_HARVEST: wood,
+    }
+
+
 _LABELS = {
     "apple": "Pommier",
     "pear": "Poirier",
@@ -135,7 +169,7 @@ CROPS: dict[str, Crop] = {
     key: Crop(
         key=key,
         label=_LABELS[key],
-        stages={DORMANT: _DORMANT_HARDINESS[key], **stages},
+        stages={DORMANT: _DORMANT_HARDINESS[key], **stages, **_fruiting(stages)},
         rest_stage=DORMANT,
     )
     for key, stages in _TREE_FRUIT.items()
@@ -180,6 +214,10 @@ CROPS["vine"] = Crop(
         "bud_burst": (-3.0, -5.0),
         "first_leaves": (-1.5, -2.5),
         "shoots_10cm": (-1.0, -2.0),
+        # La suite de la saison n'est pas détaillée pour la vigne : ce stade
+        # dit seulement que la pousse est installée. Les organes verts
+        # restent aussi sensibles au gel que les jeunes rameaux.
+        "full_leaf": (-1.0, -2.0),
     },
     source="generic",
     rest_stage=DORMANT,
@@ -220,6 +258,13 @@ STAGE_LABELS = {
     "bud_swell": "Bourgeon gonflé",
     "first_leaves": "Premières feuilles",
     "shoots_10cm": "Rameaux 10 cm",
+    "full_leaf": "Pleine végétation",
+    # Fructification
+    "fruit_set": "Jeunes fruits",
+    "fruit_growth": "Fruits en croissance",
+    "ripening": "Maturation des fruits",
+    "harvest": "Récolte",
+    "post_harvest": "Après récolte",
     # Cultures basses
     "growing": "En végétation",
     "emerged": "Levée effectuée",

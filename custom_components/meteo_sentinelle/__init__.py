@@ -8,7 +8,9 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.util import dt as dt_util
 
 from .alerting import (
     dismiss_treatment_reminder,
@@ -54,7 +56,7 @@ from .tree import legacy_tree_data, match_trees, strip_legacy_keys
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["sensor", "select", "switch"]
+PLATFORMS = ["sensor", "select", "switch", "calendar"]
 
 #: `tree` accepte un nom d'arbre ou un identifiant de sous-entrée ;
 #: omis, l'action s'applique à tous les arbres concernés.
@@ -71,6 +73,8 @@ LOG_TREATMENT_SCHEMA = vol.Schema(
         vol.Optional(ATTR_RAINFAST_MM, default=DEFAULT_RAINFAST_MM): vol.All(
             vol.Coerce(float), vol.Range(min=0, max=500)
         ),
+        # Jour de l'application, pour un traitement déclaré après coup.
+        vol.Optional(ATTR_DATE): cv.date,
     }
 )
 
@@ -286,6 +290,14 @@ def _async_register_services(hass: HomeAssistant) -> None:
         return
 
     async def _log_treatment(call: ServiceCall) -> None:
+        applied_on = call.data.get(ATTR_DATE)
+        if applied_on is not None and applied_on > dt_util.now().date():
+            # Un traitement prévu n'est pas un traitement fait : le déclarer
+            # d'avance afficherait une protection qui n'existe pas encore.
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="treatment_in_future",
+            )
         for coordinator in _coordinators(hass):
             treated = await coordinator.async_log_treatment(
                 target=call.data[ATTR_TARGET],
@@ -293,6 +305,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 residual_days=call.data.get(ATTR_RESIDUAL_DAYS, DEFAULT_RESIDUAL_DAYS),
                 rainfast_mm=call.data.get(ATTR_RAINFAST_MM, DEFAULT_RAINFAST_MM),
                 subentry_ids=_resolve_trees(coordinator, call.data.get(ATTR_TREE)),
+                applied_on=applied_on,
             )
             # Le rappel « à renouveler » a fait son office.
             for subentry_id in treated:

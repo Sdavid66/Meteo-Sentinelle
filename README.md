@@ -210,6 +210,9 @@ attached to that device:
   An apple tree gets powdery mildew, a potato gets late blight; applying
   potato late blight to an apple tree would make no agronomic sense.
 
+The site device carries what all trees share: degree days, season, spray
+window and the treatment calendar.
+
 **How do you tell one tree's stage from another's?** The context comes
 from the device: the entity belongs to the tree's device, so Home
 Assistant displays it as *Apple Golden at the back — Growth stage*. The
@@ -235,8 +238,29 @@ Three safeguards:
 - **everything can be switched off.** The *Automatic advancement* switch
   disables it for a given tree.
 
+**After bloom**, degree days have nothing more to say: the published
+thresholds stop there. The rest is read from the time elapsed since
+bloom, against the species' bloom-to-harvest duration:
+
+| Stage | Starts |
+|---|---|
+| Young fruit | two weeks after bloom begins |
+| Fruit growing | a fifth of the way through |
+| Fruit ripening | 85% of the way through |
+| Harvest | at the end of the duration |
+| After harvest | **never on its own**: you declare it |
+
+These durations depend heavily on the cultivar. It is an estimate, and
+your correction recalibrates it like everything else: pick "Fruit
+ripening" and harvest is announced from there.
+
+"After harvest" relaxes frost monitoring, since only wood is left. That
+is why it never applies on its own: a late cultivar still loaded with
+fruit must not lose its alerts on the strength of an average duration.
+Grapevine, whose bloom is not tracked, simply moves on to "Full leaf".
+
 The stage sensor also exposes the next expected stage, the degree days
-remaining to reach it, the recorded bloom date, and an estimate of the
+or days remaining to reach it, the bloom date, and an estimate of the
 days before harvest.
 
 ⚠️ **These thresholds are regionally calibrated.** The reference values
@@ -415,12 +439,14 @@ The card answers one question first: do I need to do something, and when?
   the forecast temperature against the damage thresholds, the powdery mildew
   index, the pest's cycle and the milestones to act on.
 - **Actions are declared from the card.** "I sprayed" opens a small form
-  (product, protection length, wash-off) and schedules the renewal reminder.
-  "First catch today" takes a second tap to confirm. If the tree isn't where
-  the model thinks it is, the "Observed stage" list corrects it.
+  (product, date, protection length, wash-off) and schedules the renewal
+  reminder. "First catch today" takes a second tap to confirm. If the tree
+  isn't where the model thinks it is, the "Observed stage" list corrects it,
+  from rest all the way to "After harvest".
 - **A treated tree shows it**: a shield on its scene, then in the detail
-  "Protected until 20 Jun · 5 d left", the product and the rain received. Once
-  protection has ended and the risk is still there, the card says "To renew".
+  "Protected until 20 Jun · 5 d left", the product, the rain received and the
+  earlier treatments. Once protection has ended and the risk is still there,
+  the card says "To renew".
 - **Spray windows** for the next 48 hours are shown at the bottom. The message
   picks the first slot between 7 am and 9 pm.
 
@@ -435,10 +461,9 @@ title: The back orchard
 show_spray: false
 ```
 
-Past the last tracked stage, the drawing and the "Fruit growing" label come
-from the bloom date or, failing that, the heat received. Delays in days ("in
-~5 d") extrapolate the heat of the last seven days. They are orders of
-magnitude.
+The fruit drawn grows and ripens according to the bloom date. Before bloom,
+delays in days ("in ~5 d") extrapolate the heat of the last seven days. They
+are orders of magnitude.
 
 ## Voice commands (Assist)
 
@@ -490,6 +515,11 @@ apple, pear, apricot, plum, peach/nectarine and sweet cherry.
 You choose the species during setup; the **growth stage** can then be
 changed at any time from the `select` entity — useful to automate it or
 adjust it by observing the orchard.
+
+These tables stop at young fruit. While there is fruit on the tree,
+their last row remains the reference. Once harvest is declared, only
+wood and next year's buds are left: the threshold used is that of a bud
+leaving dormancy, a cautious order of magnitude.
 
 The integration also estimates **surface temperature**: under a clear sky
 and light wind, night-time radiation cools the ground 3 to 5 °C below air
@@ -618,7 +648,15 @@ data:
   product: Wettable sulphur
   residual_days: 10
   rainfast_mm: 20
+  date: "2026-06-14"               # omitted = now
 ```
+
+**Logging afterwards.** The "Applied on" field of the form, or `date` in
+the action, dates a treatment done the day before or last week:
+protection and reminder start from the right day. Rain fallen in the
+meantime is read back from history, over ten days at most. A treatment
+that has already ended when you log it is recorded without triggering a
+reminder. A future date is rejected.
 
 **What the integration derives.** A **… protection** entity per tree and
 per target gives the end-of-protection date, accounting for both residual
@@ -647,8 +685,24 @@ or `washed_off`), `product`, `applied_at`, `protected_until`,
 `message` in Home Assistant's language.
 
 There is no advance notice for a protection shorter than three days, and
-no reminder in winter: when a tree enters rest, the season's treatments
-are cleared.
+no reminder in winter: when a tree enters rest, its current treatments
+are closed.
+
+**The log and the calendar.** Every application stays on record, even
+once replaced, ended, or after the tree is deleted. The log is read in
+**Home Assistant's calendar**, where the integration adds a "Treatments"
+calendar per site:
+
+- one event per treatment, covering the protected period, with the
+  product and what ended it (full term, wash-off, next treatment);
+- one **"Renew"** event per current treatment, on the day protection
+  ends. It disappears when you log the next treatment.
+
+Deleting a treatment from the calendar removes it from the log: that is
+how to fix an old entry. "Clear" in the card does the same while the
+treatment is less than 24 hours old; beyond that, it did take place and
+stays in the log. The log keeps three seasons. The card recalls the last
+three applications under each risk.
 
 Tracking is **per tree**: you can treat the apple today and the pear next
 week without the two getting mixed up.
@@ -706,9 +760,11 @@ Use this as an aid to vigilance, not as plant-health advice.
 - v1.3: new illustrated card — one scene per tree, following its stage
   and showing what threatens it; stage correction from the card;
   compatibility with wall panels running an old browser.
-- **v1.4 (current)**: logging a treatment from the card, with a renewal
-  reminder — the day before, when protection ends, or as soon as rain has
-  washed the product off.
+- v1.4: logging a treatment from the card, with a renewal reminder — the
+  day before, when protection ends, or as soon as rain has washed the
+  product off.
+- **v1.5 (current)**: stages tracked through to harvest; treatments
+  logged afterwards; treatment log and renewal calendar.
 - Next: apple scab (Mills table), infection cohorts with latency for
   late blight, cultivar sensitivity, learning the degree day offset from
   the user's manual corrections.

@@ -138,6 +138,12 @@
           "bud_swell": "Bourgeon gonflé",
           "first_leaves": "Premières feuilles",
           "shoots_10cm": "Rameaux 10 cm",
+          "full_leaf": "Pleine végétation",
+          "fruit_set": "Jeunes fruits",
+          "fruit_growth": "Fruits en croissance",
+          "ripening": "Maturation des fruits",
+          "harvest": "Récolte",
+          "post_harvest": "Après récolte",
           "off_season": "Hors saison"
         }
       }
@@ -239,6 +245,12 @@
           "bud_swell": "Bourgeon gonflé",
           "first_leaves": "Premières feuilles",
           "shoots_10cm": "Rameaux 10 cm",
+          "full_leaf": "Pleine végétation",
+          "fruit_set": "Jeunes fruits",
+          "fruit_growth": "Fruits en croissance",
+          "ripening": "Maturation des fruits",
+          "harvest": "Récolte",
+          "post_harvest": "Après récolte",
           "off_season": "Hors saison"
         }
       },
@@ -292,12 +304,17 @@
       "auto_advance": {
         "name": "Avancement automatique du stade"
       }
+    },
+    "calendar": {
+      "treatments": {
+        "name": "Traitements"
+      }
     }
   },
   "services": {
     "log_treatment": {
       "name": "Enregistrer un traitement",
-      "description": "Déclare une application et calcule jusqu'à quand la culture est protégée. Un rappel est émis la veille de la fin de protection, puis à son terme ou si la pluie l'a lessivée.",
+      "description": "Déclare une application et calcule jusqu'à quand la culture est protégée. Un rappel est émis la veille de la fin de protection, puis à son terme ou si la pluie l'a lessivée. Chaque application reste dans le journal des traitements, visible dans le calendrier.",
       "fields": {
         "target": {
           "name": "Cible",
@@ -318,6 +335,10 @@
         "rainfast_mm": {
           "name": "Lessivage (mm)",
           "description": "Cumul de pluie annulant la protection."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Jour de l'application, pour un traitement déclaré après coup. Par défaut aujourd'hui. La pluie tombée depuis est relue dans l'historique, sur dix jours au plus."
         }
       }
     },
@@ -392,6 +413,11 @@
       }
     }
   },
+  "exceptions": {
+    "treatment_in_future": {
+      "message": "Un traitement ne se déclare pas d'avance : choisissez aujourd'hui ou une date passée."
+    }
+  },
   "selector": {
     "crop": {
       "options": {
@@ -440,6 +466,12 @@
         "bud_swell": "Bourgeon gonflé",
         "first_leaves": "Premières feuilles",
         "shoots_10cm": "Rameaux 10 cm",
+        "full_leaf": "Pleine végétation",
+        "fruit_set": "Jeunes fruits",
+        "fruit_growth": "Fruits en croissance",
+        "ripening": "Maturation des fruits",
+        "harvest": "Récolte",
+        "post_harvest": "Après récolte",
         "off_season": "Hors saison"
       }
     },
@@ -480,6 +512,7 @@
     "notify_disease_caveat": "Ces modèles sont indicatifs et supposent le pathogène présent ; ils ne remplacent pas une observation sur place.",
     "notify_stage_title": "{tree} — stade avancé automatiquement",
     "notify_stage_change": "Le stade est passé de {previous} à {stage}, d'après le cumul de degrés-jours ({gdd} °C·j).",
+    "notify_stage_change_bloom": "Le stade est passé de {previous} à {stage}, d'après le temps écoulé depuis la floraison.",
     "notify_stage_advice": "Ce changement a été appliqué automatiquement et modifie les seuils de gel utilisés pour cet arbre. Si l'observation sur place ne correspond pas, corrigez le stade depuis l'entité de stade phénologique : votre correction fait autorité. Vous pouvez aussi désactiver l'avancement automatique pour cet arbre.",
     "notify_rest_title": "{tree} — repos hivernal",
     "notify_rest_advice": "La saison est terminée à votre emplacement : les modèles maladie et ravageurs sont suspendus pour cet arbre et ses compteurs saisonniers ont été remis à zéro. Ils reprendront d'eux-mêmes lorsque la chaleur accumulée au printemps sera suffisante. Si l'observation sur place ne correspond pas, corrigez le stade : votre correction fait autorité.",
@@ -495,6 +528,18 @@
     "notify_treatment_window_open": "Les conditions permettent de traiter en ce moment.",
     "notify_treatment_window": "Prochaine fenêtre de traitement : {when}.",
     "notify_treatment_how": "Une fois le traitement fait, déclarez-le depuis la carte Météo Sentinelle : un nouveau rappel sera programmé.",
+    "calendar_treatment": "{tree} · {model}",
+    "calendar_treatment_product": "{tree} · {model} ({product})",
+    "calendar_renewal": "À renouveler : {tree} · {model}",
+    "calendar_renewal_detail": "Fin de la protection apportée par le traitement du {applied}.",
+    "calendar_residual": "Protège {days} j, lessivé après {mm} mm de pluie.",
+    "calendar_residual_only": "Protège {days} j.",
+    "calendar_active": "Protection en cours.",
+    "calendar_end_expired": "Protection arrivée à son terme.",
+    "calendar_end_washed_off": "Lessivé par la pluie ({rain} mm).",
+    "calendar_end_replaced": "Suivi d'un nouveau traitement.",
+    "calendar_end_cleared": "Clos à la main.",
+    "calendar_end_season_end": "Clos par le repos hivernal.",
     "stage_not_set": "non renseigné",
     "detail_frost_min_air": "minimum attendu {temperature} °C sous abri",
     "detail_frost_min_ground": "minimum attendu {temperature} °C au niveau du sol",

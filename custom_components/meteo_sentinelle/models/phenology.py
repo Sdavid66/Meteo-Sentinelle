@@ -28,13 +28,37 @@ sensiblement différents. Deux garde-fous en découlent :
 L'avancement est **monotone** : le modèle ne fait jamais reculer un
 stade. Un redoux en février ne peut pas « défaire » une floraison
 constatée.
+
+Après la floraison
+------------------
+Les seuils publiés s'arrêtent à la floraison ou au tout jeune fruit. La
+suite — jeunes fruits, croissance, maturation, récolte — se lit sur le
+**temps écoulé depuis la floraison**, rapporté à la durée floraison →
+récolte de l'espèce. C'est une estimation, très dépendante de la variété,
+et la même règle s'y applique : le stade choisi à la main fait autorité et
+recale le calendrier.
+
+Le dernier stade, « après récolte », ne s'applique jamais tout seul. Il
+relâche la surveillance du gel, et une variété tardive encore chargée de
+fruits ne doit pas la perdre sur la foi d'une durée moyenne.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from math import ceil
 
-from .crops import CROPS, REST_STAGES, stage_options
+from .crops import (
+    CROPS,
+    FRUIT_GROWTH,
+    FRUIT_SET,
+    FRUIT_STAGES,
+    HARVEST,
+    POST_HARVEST,
+    REST_STAGES,
+    RIPENING,
+    stage_options,
+)
 from .season import season_year as _season_year
 
 #: Température de base des degrés-jours arbres fruitiers (42 °F).
@@ -111,6 +135,7 @@ STAGE_GDD: dict[str, dict[str, float]] = {
         "bud_burst": 220,
         "first_leaves": 300,
         "shoots_10cm": 400,
+        "full_leaf": 550,
     },
     # Annuelles : aucune phénologie suivie, ce seuil marque seulement le
     # moment de recommencer à surveiller. Il est volontairement précoce —
@@ -134,6 +159,16 @@ BLOOM_TO_HARVEST_DAYS: dict[str, int] = {
 
 #: Stades marquant la floraison, utilisés pour dater la nouaison.
 BLOOM_STAGES = {"full_bloom", "first_bloom"}
+
+#: Les fruits sont noués une quinzaine de jours après le début de la floraison.
+FRUIT_SET_AFTER_DAYS = 14
+#: Part de la durée floraison → récolte où commencent le grossissement
+#: puis la maturation.
+FRUIT_GROWTH_FROM = 0.2
+RIPENING_FROM = 0.85
+#: Stades de fructification atteints tout seuls, dans l'ordre. « Après
+#: récolte » n'en fait pas partie : il se déclare.
+AUTO_FRUIT_STAGES = [FRUIT_SET, FRUIT_GROWTH, RIPENING, HARVEST]
 
 
 @dataclass
@@ -334,19 +369,152 @@ def correction_shift(
     Le décalage place le cumul de l'arbre sur le seuil du stade observé, et la
     suite se compte à partir de là. Un stade de repos n'a pas de seuil : le
     compte repart de zéro, jusqu'au premier stade d'activité.
+
+    Un stade de fructification n'a pas de seuil non plus, mais il suppose
+    tous les seuils franchis : le cumul n'est relevé que s'il en manquait.
     """
-    threshold = STAGE_GDD.get(crop, {}).get(stage)
+    table = STAGE_GDD.get(crop, {})
+    reached = gdd_total + offset
+    if stage in FRUIT_STAGES:
+        return max(0.0, max(table.values(), default=0.0) - reached)
+    threshold = table.get(stage)
     target = 0.0 if threshold is None else threshold
-    return target - (gdd_total + offset)
+    return target - reached
 
 
 def is_before_bloom(crop: str, stage: str) -> bool:
     """Le stade précède-t-il la floraison de cette espèce ?"""
+    if stage in FRUIT_STAGES:
+        return False
     stages = ordered_stages(crop)
     blooms = [i for i, name in enumerate(stages) if name in BLOOM_STAGES]
     if stage not in stages:
         return True
     return bool(blooms) and stages.index(stage) < blooms[0]
+
+
+def reached_bloom(crop: str, stage: str | None) -> bool:
+    """L'arbre a-t-il fleuri, d'après son stade ?
+
+    Faux pour les cultures dont la floraison n'est pas suivie (vigne,
+    potager) : elles n'ont pas de date de floraison à tenir.
+    """
+    if stage is None:
+        return False
+    if stage in FRUIT_STAGES:
+        return has_fruit_stages(crop)
+    stages = ordered_stages(crop)
+    blooms = [i for i, name in enumerate(stages) if name in BLOOM_STAGES]
+    return bool(blooms) and stage in stages and stages.index(stage) >= blooms[0]
+
+
+# ----------------------------------------------------------------------
+# Fructification : le temps écoulé depuis la floraison
+# ----------------------------------------------------------------------
+
+
+def has_fruit_stages(crop: str) -> bool:
+    """L'espèce est-elle suivie jusqu'à la récolte ?"""
+    entry = CROPS.get(crop)
+    return bool(entry and FRUIT_SET in entry.stages and crop in BLOOM_TO_HARVEST_DAYS)
+
+
+def fruit_stage_start(crop: str, stage: str) -> int | None:
+    """Jours après la floraison où commence un stade de fructification."""
+    if not has_fruit_stages(crop):
+        return None
+    duration = BLOOM_TO_HARVEST_DAYS[crop]
+    # Sur une espèce à cycle court (cerisier), un cinquième de la durée
+    # tomberait avant la nouaison : les stades gardent une semaine d'écart.
+    growth = max(ceil(duration * FRUIT_GROWTH_FROM), FRUIT_SET_AFTER_DAYS + 7)
+    return {
+        FRUIT_SET: FRUIT_SET_AFTER_DAYS,
+        FRUIT_GROWTH: growth,
+        RIPENING: max(ceil(duration * RIPENING_FROM), growth + 7),
+        HARVEST: duration,
+    }.get(stage)
+
+
+def _as_date(value: datetime | date) -> date:
+    return value.date() if isinstance(value, datetime) else value
+
+
+def fruit_stage(
+    crop: str, bloom_date: datetime | date | None, today: date
+) -> str | None:
+    """Stade de fructification attendu, ou None avant la nouaison."""
+    if bloom_date is None or not has_fruit_stages(crop):
+        return None
+    elapsed = (today - _as_date(bloom_date)).days
+    reached = None
+    for stage in AUTO_FRUIT_STAGES:
+        if elapsed >= fruit_stage_start(crop, stage):
+            reached = stage
+    return reached
+
+
+def propose_fruit_stage(
+    crop: str,
+    current_stage: str | None,
+    bloom_date: datetime | date | None,
+    today: date,
+) -> str | None:
+    """Stade de fructification à appliquer, ou None s'il n'y a rien à changer.
+
+    Monotone comme `propose_advance` : un stade choisi à la main en avance
+    sur le calendrier n'est pas ramené en arrière.
+    """
+    expected = fruit_stage(crop, bloom_date, today)
+    if expected is None or expected == current_stage:
+        return None
+    sequence = stage_options(crop)
+    if current_stage not in sequence:
+        return expected
+    if sequence.index(expected) > sequence.index(current_stage):
+        return expected
+    return None
+
+
+def next_fruit_stage(
+    crop: str,
+    stage: str | None,
+    bloom_date: datetime | date | None,
+    today: date,
+) -> tuple[str, int] | None:
+    """(stade suivant, jours restants) pendant la fructification, ou None."""
+    if (
+        bloom_date is None
+        or not has_fruit_stages(crop)
+        or not reached_bloom(crop, stage)
+    ):
+        return None
+    sequence = stage_options(crop)
+    elapsed = (today - _as_date(bloom_date)).days
+    for following in AUTO_FRUIT_STAGES:
+        if sequence.index(following) > sequence.index(stage):
+            return following, max(0, fruit_stage_start(crop, following) - elapsed)
+    return None
+
+
+def bloom_reference(
+    crop: str, stage: str, now: datetime, current: datetime | None
+) -> datetime | None:
+    """Date de floraison cohérente avec un stade observé.
+
+    Une correction manuelle fait autorité sur le calendrier de la
+    fructification comme sur les degrés-jours : la date est recalée pour que
+    le stade choisi commence maintenant, et la suite se compte à partir de là.
+    Elle n'est pas touchée si elle place déjà l'arbre à ce stade.
+    """
+    if is_before_bloom(crop, stage):
+        return None
+    if not reached_bloom(crop, stage) or stage == POST_HARVEST:
+        return current
+    wanted = stage if stage in FRUIT_STAGES else None
+    if current is not None and fruit_stage(crop, current, now.date()) == wanted:
+        return current
+    start = fruit_stage_start(crop, stage) if wanted else 0
+    return now - timedelta(days=start or 0)
 
 
 def gdd_to_stage(
@@ -376,6 +544,10 @@ def propose_advance(
     """
     stages = ordered_stages(crop)
     if not stages:
+        return None
+    # La fructification ne se lit plus sur les degrés-jours : ils
+    # ramèneraient l'arbre au dernier stade qu'ils connaissent.
+    if current_stage in FRUIT_STAGES:
         return None
 
     expected = stage_for_gdd(crop, gdd_total, offset)

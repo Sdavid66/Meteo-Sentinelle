@@ -78,6 +78,7 @@ function load() {
 }
 
 const { Card, STRINGS, SCENARIOS, window, buildView, context } = load();
+const computeGrowth = vm.runInContext("computeGrowth", context);
 const contextRef = () => context;
 const CONFIG = { type: "custom:meteo-sentinelle-card" };
 
@@ -167,8 +168,32 @@ check(spring.alerts[0].text.includes("−3,4"), "la température garde sa décim
 const summer = buildView(SCENARIOS["Été : carpocapse et oïdium"]({ lang: "fr" }), CONFIG);
 check(rankOrder(summer.alerts), "les messages vont du plus urgent au moins urgent");
 const golden = summer.trees.find((tree) => tree.key === "golden");
-check(golden.growth.phase === "fruit", "pleine floraison il y a 70 jours : l'arbre porte des fruits");
-check(golden.stageLabel === "Fruits en croissance", "et son libellé le dit");
+check(golden.stageKey === "fruit_growth" && golden.growth.phase === "fruit", "70 jours après la floraison : l'arbre porte des fruits");
+check(golden.stageLabel === "Fruits en croissance", "et son libellé est celui du stade, le même que dans la liste");
+check(
+  golden.next.key === "ripening" && golden.next.when === "dans ~54 j" && golden.next.dd === null,
+  "après la floraison, le stade suivant s'annonce en jours"
+);
+check(golden.growth.remaining === 75, "et la récolte reste estimée");
+const vine = summer.trees.find((tree) => tree.key === "vigne");
+check(
+  vine.stageKey === "full_leaf" && vine.stageLabel === "Pleine végétation" && vine.growth.phase !== "leaf",
+  "la vigne en pleine végétation porte son stade, et ses grappes"
+);
+const lateSummer = buildView(SCENARIOS["Fin d'été : tout va bien"]({ lang: "fr" }), CONFIG);
+const stagesOf = Object.fromEntries(lateSummer.trees.map((tree) => [tree.key, tree]));
+check(
+  stagesOf.golden.stageKey === "ripening" && stagesOf.conference.stageKey === "harvest" && stagesOf.abricotier.stageKey === "post_harvest",
+  "fin d'été : maturation, récolte et après récolte sont de vrais stades"
+);
+check(
+  stagesOf.conference.growth.phase === "ripe" && stagesOf.abricotier.growth.phase === "autumn" && !stagesOf.conference.growth.remaining,
+  "ils se dessinent avec leurs fruits, puis en feuillage d'automne"
+);
+check(stagesOf.conference.next === null, "à la récolte, rien n'est annoncé : « après récolte » se déclare");
+check(/récolte, dans ~10 j\.$/.test(lateSummer.calm.next), "le message du verger annonce la prochaine récolte en jours");
+const noBloom = computeGrowth("fruit_growth", { stages: [], bloom_to_harvest_days: 145 });
+check(noBloom.phase === "fruit" && noBloom.ripeness === 0.5 && noBloom.remaining === null, "sans date de floraison, le stade suffit à dessiner l'arbre");
 const blight = summer.alerts.find((alert) => alert.model === "late_blight");
 check(blight.action.startsWith("Traitement à renouveler."), "un traitement lessivé alors que le risque est là est à renouveler");
 const tomato = summer.trees.find((tree) => tree.key === "tomates");
@@ -227,7 +252,12 @@ console.log("\n--- gestes ---");
     card._form.days === 7 && card._form.mm === 20 && card._form.product === "",
     "le formulaire reprend l'intervalle conseillé et les valeurs par défaut"
   );
+  check(/^\d{4}-\d{2}-\d{2}$/.test(card._form.date) && card._form.date === card._form.today, "il est daté d'aujourd'hui");
   check(card.shadowRoot.innerHTML.includes('data-field="days"'), "il s'affiche dans le détail de l'arbre");
+  check(
+    card.shadowRoot.innerHTML.includes(`type="date" data-field="date" max="${card._form.today}" value="${card._form.today}"`),
+    "avec un champ date qui ne va pas au-delà d'aujourd'hui"
+  );
   check(calls.length === 0, "l'ouvrir ne déclare rien");
   card._onInput({ target: { dataset: { field: "product" }, type: "text", value: "  Soufre mouillable  " } });
   card._onInput({ target: { dataset: { field: "days" }, type: "number", value: "10" } });
@@ -238,7 +268,18 @@ console.log("\n--- gestes ---");
     calls[0].data.product === "Soufre mouillable" && calls[0].data.residual_days === 10 && calls[0].data.rainfast_mm === 20,
     "et le produit et les durées saisis"
   );
+  check(!("date" in calls[0].data), "sans date choisie, c'est l'instant de la déclaration qui compte");
   check(card._form === null, "puis le formulaire se referme");
+
+  card._selected = "golden";
+  await card._onAction("form", "powdery_mildew", "golden");
+  card._onInput({ target: { dataset: { field: "date" }, type: "date", value: "2026-06-02" } });
+  await card._onAction("save");
+  check(calls.pop().data.date === "2026-06-02", "une date passée est transmise : le traitement est déclaré après coup");
+  await card._onAction("form", "powdery_mildew", "golden");
+  card._onInput({ target: { dataset: { field: "date" }, type: "date", value: "" } });
+  await card._onAction("save");
+  check(!("date" in calls.pop().data), "une date vidée retombe sur aujourd'hui");
 
   card._selected = "golden";
   await card._onAction("form", "powdery_mildew", "golden");
@@ -265,6 +306,13 @@ console.log("\n--- gestes ---");
   card._update(true);
   const protectedDetail = card.shadowRoot.innerHTML;
   check(protectedDetail.includes("encore 5 j") && protectedDetail.includes("pluie reçue : 3 sur 20 mm"), "un arbre protégé affiche le temps restant et la pluie reçue");
+  check(
+    protectedDetail.includes("Traitements précédents") && /<li>[^<]*Soufre · 10 j<\/li><li>[^<]*Bicarbonate · 7 j · lessivé<\/li>/.test(protectedDetail),
+    "et ses traitements précédents, tirés du journal"
+  );
+  card._selected = "golden";
+  card._update(true);
+  check(!card.shadowRoot.innerHTML.includes("Traitements précédents"), "sans traitement passé, pas d'historique vide");
   card._selected = "tomates";
   card._update(true);
   check(card.shadowRoot.innerHTML.includes("Traitement lessivé par la pluie (24 mm)."), "un traitement lessivé est annoncé dans le détail");
@@ -302,7 +350,17 @@ console.log("\n--- gestes ---");
   card._update();
   const detail = card.shadowRoot.innerHTML;
   check(detail.includes('data-stage data-sub="golden"'), "le détail propose la liste des stades");
-  check(detail.includes('value="full_bloom" selected'), "le stade courant y est présélectionné");
+  check(detail.includes('value="fruit_growth" selected'), "le stade courant y est présélectionné");
+  check(
+    ["fruit_set", "ripening", "harvest", "post_harvest"].every((key) => detail.includes(`<option value="${key}" `)),
+    "la liste va jusqu'à l'après-récolte"
+  );
+  check((detail.match(/class="step /g) || []).length === 14, "le parcours de la saison compte un pas par stade");
+  check(detail.includes("Ensuite : Maturation des fruits, dans ~54 j."), "le détail annonce le stade suivant");
+  const harvestCard = render(SCENARIOS["Fin d'été : tout va bien"]({ lang: "fr" }));
+  harvestCard._selected = "conference";
+  harvestCard._update(true);
+  check(harvestCard.shadowRoot.innerHTML.includes("Récolte terminée ?"), "à la récolte, la carte dit comment déclarer qu'elle est finie");
 
   await card._onAction("clear", "powdery_mildew", "conference");
   check(calls[2].service === "clear_treatment", "effacer un traitement ne demande pas de confirmation");

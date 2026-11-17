@@ -264,7 +264,9 @@ def process_stage_advances(
             "\n\n".join(
                 (
                     tr.text(
-                        "notify_stage_change",
+                        "notify_stage_change_bloom"
+                        if advance.get("since_bloom")
+                        else "notify_stage_change",
                         previous=previous_label,
                         stage=stage_label,
                         gdd=advance["gdd"],

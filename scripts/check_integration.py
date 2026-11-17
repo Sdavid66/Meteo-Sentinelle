@@ -237,6 +237,7 @@ _DEPENDENCY_ALLOWED = {
     "binary_sensor",
     "number",
     "button",
+    "calendar",
     "climate",
     "cover",
     "fan",

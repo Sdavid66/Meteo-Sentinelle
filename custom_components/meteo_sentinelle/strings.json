@@ -138,6 +138,12 @@
           "bud_swell": "Bud swell",
           "first_leaves": "First leaves",
           "shoots_10cm": "Shoots 10 cm",
+          "full_leaf": "Full leaf",
+          "fruit_set": "Young fruit",
+          "fruit_growth": "Fruit growing",
+          "ripening": "Fruit ripening",
+          "harvest": "Harvest",
+          "post_harvest": "After harvest",
           "off_season": "Off season"
         }
       }
@@ -239,6 +245,12 @@
           "bud_swell": "Bud swell",
           "first_leaves": "First leaves",
           "shoots_10cm": "Shoots 10 cm",
+          "full_leaf": "Full leaf",
+          "fruit_set": "Young fruit",
+          "fruit_growth": "Fruit growing",
+          "ripening": "Fruit ripening",
+          "harvest": "Harvest",
+          "post_harvest": "After harvest",
           "off_season": "Off season"
         }
       },
@@ -292,12 +304,17 @@
       "auto_advance": {
         "name": "Advance growth stage automatically"
       }
+    },
+    "calendar": {
+      "treatments": {
+        "name": "Treatments"
+      }
     }
   },
   "services": {
     "log_treatment": {
       "name": "Log a treatment",
-      "description": "Logs an application and works out until when the crop is protected. A reminder is sent the day before the protection ends, then when it ends or is washed off by rain.",
+      "description": "Logs an application and works out until when the crop is protected. A reminder is sent the day before the protection ends, then when it ends or is washed off by rain. Every application is kept in the treatment log, shown in the calendar.",
       "fields": {
         "target": {
           "name": "Target",
@@ -318,6 +335,10 @@
         "rainfast_mm": {
           "name": "Wash-off (mm)",
           "description": "Cumulative rainfall that voids protection."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Day of the application, for a treatment logged afterwards. Today by default. Rain fallen since then is read back from history, over the last ten days at most."
         }
       }
     },
@@ -392,6 +413,11 @@
       }
     }
   },
+  "exceptions": {
+    "treatment_in_future": {
+      "message": "A treatment cannot be logged ahead of time: pick today or an earlier date."
+    }
+  },
   "selector": {
     "crop": {
       "options": {
@@ -440,6 +466,12 @@
         "bud_swell": "Bud swell",
         "first_leaves": "First leaves",
         "shoots_10cm": "Shoots 10 cm",
+        "full_leaf": "Full leaf",
+        "fruit_set": "Young fruit",
+        "fruit_growth": "Fruit growing",
+        "ripening": "Fruit ripening",
+        "harvest": "Harvest",
+        "post_harvest": "After harvest",
         "off_season": "Off season"
       }
     },
@@ -480,6 +512,7 @@
     "notify_disease_caveat": "These models are indicative and assume the pathogen is present; they do not replace on-site observation.",
     "notify_stage_title": "{tree} — growth stage advanced automatically",
     "notify_stage_change": "The growth stage moved from {previous} to {stage}, based on accumulated growing degree days ({gdd} °C·d).",
+    "notify_stage_change_bloom": "The growth stage moved from {previous} to {stage}, based on the time elapsed since bloom.",
     "notify_stage_advice": "This change was applied automatically and alters the frost thresholds used for this tree. If it does not match what you observe, correct it from the growth stage entity: your correction takes precedence. You can also turn off automatic advancement for this tree.",
     "notify_rest_title": "{tree} — winter rest",
     "notify_rest_advice": "The season is over at your location: disease and pest models are paused for this tree and its seasonal counters have been reset. They resume on their own once enough warmth has built up in spring. If this does not match what you observe, correct the growth stage: your correction takes precedence.",
@@ -495,6 +528,18 @@
     "notify_treatment_window_open": "Conditions allow spraying right now.",
     "notify_treatment_window": "Next spray window: {when}.",
     "notify_treatment_how": "Once it is done, log the treatment from the Météo Sentinelle card: a new reminder will be scheduled.",
+    "calendar_treatment": "{tree} · {model}",
+    "calendar_treatment_product": "{tree} · {model} ({product})",
+    "calendar_renewal": "Renew: {tree} · {model}",
+    "calendar_renewal_detail": "End of the protection given by the treatment of {applied}.",
+    "calendar_residual": "Protects for {days} d, washed off after {mm} mm of rain.",
+    "calendar_residual_only": "Protects for {days} d.",
+    "calendar_active": "Protection under way.",
+    "calendar_end_expired": "Protection ran its full course.",
+    "calendar_end_washed_off": "Washed off by rain ({rain} mm).",
+    "calendar_end_replaced": "Followed by a new treatment.",
+    "calendar_end_cleared": "Closed by hand.",
+    "calendar_end_season_end": "Closed by winter rest.",
     "stage_not_set": "not set",
     "detail_frost_min_air": "minimum expected {temperature} °C in the shade",
     "detail_frost_min_ground": "minimum expected {temperature} °C at ground level",

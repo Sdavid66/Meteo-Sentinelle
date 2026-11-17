@@ -110,7 +110,7 @@ class RiskSensor(MeteoSentinelleTreeEntity, SensorEntity):
     _attr_options = RISK_LEVELS
     #: Tables de référence et détail journalier : utiles à l'affichage, sans
     #: intérêt dans l'historique, où ils se répéteraient à chaque changement.
-    _unrecorded_attributes = frozenset({"stages", "days"})
+    _unrecorded_attributes = frozenset({"stages", "days", "treatments"})
 
     def __init__(self, coordinator, entry: ConfigEntry, tree: Tree, model_key: str) -> None:
         super().__init__(coordinator, entry, tree)
@@ -149,6 +149,10 @@ class RiskSensor(MeteoSentinelleTreeEntity, SensorEntity):
         protection = self.coordinator.tree_protection(self._subentry_id, self._model_key)
         if protection:
             attributes["protection"] = protection
+            # Applications précédentes, tirées du journal, pour la carte.
+            attributes["treatments"] = self.coordinator.treatment_history(
+                self._subentry_id, self._model_key
+            )
         return attributes
 
 
@@ -209,6 +213,9 @@ class StageSensor(MeteoSentinelleTreeEntity, SensorEntity):
             "gdd_offset": tree.gdd_offset,
             "gdd_shift": round(tree.shift_for(gdd.season_year), 1),
         }
+        fruiting = phenology.next_fruit_stage(
+            tree.crop, tree.stage, tree.bloom_date, dt_util.now().date()
+        )
         if following is not None:
             next_stage, threshold = following
             attributes["next_stage"] = STAGE_LABELS.get(next_stage, next_stage)
@@ -220,6 +227,12 @@ class StageSensor(MeteoSentinelleTreeEntity, SensorEntity):
                 tree.effective_offset(gdd.season_year),
                 self.coordinator.season.in_rest,
             )
+        elif fruiting is not None:
+            # Après la floraison, la suite se compte en jours.
+            next_stage, days = fruiting
+            attributes["next_stage"] = STAGE_LABELS.get(next_stage, next_stage)
+            attributes["next_stage_key"] = next_stage
+            attributes["days_to_next_stage"] = days
         if frost is not None:
             attributes["t10"] = getattr(frost, "t10", None)
             attributes["t90"] = getattr(frost, "t90", None)

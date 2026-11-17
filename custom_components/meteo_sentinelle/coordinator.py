@@ -44,6 +44,7 @@ from .const import (
 )
 from .models import pests as pest_models
 from .models import phenology, season
+from .models.crops import stage_options
 from .models.frost import evaluate_frost_risk
 from .models.hourly import HourlySample, complete_days, resample_hourly
 from .models.late_blight import LateBlightRisk, evaluate_late_blight_risk
@@ -51,12 +52,20 @@ from .models.phenology import GddState
 from .models.powdery_mildew import PowderyMildewRisk, evaluate_powdery_mildew_risk
 from .models.spray import ForecastHour, SprayAdvice, find_spray_windows
 from .models.treatments import (
+    END_CLEARED,
+    END_REPLACED,
+    END_SEASON,
     REASON_EXPIRED,
+    JournalEntry,
     Treatment,
     adjusted_level,
+    applied_moment,
+    journal_history,
     mark_reminded,
     pending_reminder,
     protection_state,
+    prune_journal,
+    rain_since,
 )
 from .tree import Tree
 
@@ -80,6 +89,9 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         self.trees: dict[str, Tree] = {}
         #: Traitements indexés par (subentry_id, modèle).
         self.treatments: dict[tuple[str, str], Treatment] = {}
+        #: Toutes les applications déclarées, y compris celles qui ne
+        #: protègent plus : c'est ce que montre le calendrier.
+        self.journal: list[JournalEntry] = []
         self.protection: dict[str, dict[str, dict]] = {}
         #: Le lieu vient de la configuration de Home Assistant : c'est lui
         #: qui décide de l'hémisphère et de la date du repos hivernal.
@@ -106,6 +118,9 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         #: Créneaux de pulvérisation trouvés dans les prévisions.
         self.spray: SprayAdvice = SprayAdvice()
         self._recorder_available = True
+        #: Relevés horaires du dernier cycle, pour retrouver la pluie tombée
+        #: depuis un traitement déclaré après coup.
+        self._hourly: list[HourlySample] = []
         self._last_rain_check: datetime | None = None
         self._store: Store = Store(
             hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}"
@@ -218,6 +233,34 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                     mark_reminded(treatment, REASON_EXPIRED)
                 self.treatments[(subentry_id, target)] = treatment
 
+        self.journal = [
+            entry
+            for entry in (
+                JournalEntry.from_dict(data)
+                for data in stored.get("journal") or []
+                if isinstance(data, dict)
+            )
+            if entry is not None
+        ]
+        # Traitements enregistrés avant l'arrivée du journal : ils y entrent,
+        # pour que le calendrier montre aussi la protection en cours.
+        now = dt_util.utcnow()
+        for (subentry_id, _target), treatment in self.treatments.items():
+            if self._journal_entry(treatment.journal_id) is not None:
+                continue
+            tree = self.trees.get(subentry_id)
+            entry = JournalEntry.record(
+                subentry_id,
+                tree.display_name if tree else "",
+                tree.crop if tree else "",
+                treatment,
+                treatment.applied_at,
+            )
+            ended = treatment.natural_end(now)
+            if ended is not None:
+                entry.close(*ended, treatment.rain_since_mm)
+            self.journal.append(entry)
+
         last_rain = stored.get("last_rain_check")
         if last_rain:
             try:
@@ -257,6 +300,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                     f"{subentry_id}|{target}": treatment.to_dict()
                     for (subentry_id, target), treatment in self.treatments.items()
                 },
+                "journal": [entry.to_dict() for entry in self.journal],
                 "last_rain_check": (
                     self._last_rain_check.isoformat() if self._last_rain_check else None
                 ),
@@ -288,17 +332,19 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             )
             tree.stage_shift_season = self.gdd.season_year
 
+        # La date de floraison suit le stade observé : effacée avant la
+        # floraison, recalée pour que la fructification reparte du stade choisi.
+        tree.bloom_date = phenology.bloom_reference(
+            tree.crop, stage, dt_util.utcnow(), tree.bloom_date
+        )
         if phenology.is_before_bloom(tree.crop, stage):
-            # L'arbre n'a pas encore fleuri : la floraison enregistrée et ce qui
-            # en a été déduit ne tiennent plus. Une observation déclarée reste.
-            tree.bloom_date = None
+            # L'arbre n'a pas encore fleuri : ce qui a été déduit de la
+            # floraison ne tient plus. Une observation déclarée reste.
             tree.biofix = {
                 pest: biofix
                 for pest, biofix in tree.biofix.items()
                 if not biofix.get("estimated")
             }
-        elif stage in phenology.BLOOM_STAGES and tree.bloom_date is None:
-            tree.bloom_date = dt_util.utcnow()
 
         await self.async_save_state()
         await self.async_request_refresh()
@@ -366,27 +412,59 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         residual_days: float,
         rainfast_mm: float,
         subentry_ids: list[str] | None = None,
+        applied_on: date | None = None,
     ) -> list[str]:
-        """Enregistre une application et renvoie les arbres concernés.
+        """Enregistre une application et renvoie les arbres dont elle devient
+        le traitement en cours.
 
         Un nouveau traitement remplace le précédent, rappels compris : c'est
-        ce qui « reprogramme » le rappel suivant.
+        ce qui « reprogramme » le rappel suivant. Chaque application est aussi
+        consignée dans le journal.
+
+        `applied_on` date un traitement déclaré après coup. La pluie tombée
+        depuis est relue dans les relevés du dernier cycle, qui remontent à
+        une dizaine de jours : au-delà, elle n'est pas connue.
         """
         ids = subentry_ids if subentry_ids is not None else list(self.trees)
         now = dt_util.utcnow()
+        applied_at = dt_util.as_utc(applied_moment(applied_on, dt_util.now()))
+        rain = rain_since(self._hourly, applied_at) if applied_at < now else 0.0
         treated: list[str] = []
         for subentry_id in ids:
             tree = self.trees.get(subentry_id)
             if tree is None or target not in tree.models:
                 continue
-            self.treatments[(subentry_id, target)] = Treatment(
+            key = (subentry_id, target)
+            treatment = Treatment(
                 target=target,
                 product=product,
-                applied_at=now,
+                applied_at=applied_at,
                 residual_days=residual_days,
                 rainfast_mm=rainfast_mm,
+                rain_since_mm=rain,
             )
+            entry = JournalEntry.record(
+                subentry_id, tree.display_name, tree.crop, treatment, now
+            )
+            ended = treatment.natural_end(now)
+            if ended is not None:
+                # Déjà terminé au moment de le déclarer : il est consigné,
+                # mais il n'y a aucun rappel à émettre pour lui.
+                mark_reminded(treatment, REASON_EXPIRED)
+                entry.close(*ended, rain)
+
+            current = self.treatments.get(key)
+            if current is not None and current.applied_at > applied_at:
+                # Plus ancien que le traitement en cours : il complète le
+                # journal sans toucher à la protection.
+                entry.close(current.applied_at, END_REPLACED)
+                self.journal.append(entry)
+                continue
+            self._undo_or_retire(key, now, END_REPLACED, when=applied_at)
+            self.journal.append(entry)
+            self.treatments[key] = treatment
             treated.append(subentry_id)
+        self.journal = prune_journal(self.journal, now)
         await self.async_save_state()
         await self.async_request_refresh()
         return treated
@@ -396,15 +474,123 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
     ) -> list[tuple[str, str]]:
         """Efface des traitements et renvoie les couples (arbre, cible) retirés."""
         ids = set(subentry_ids) if subentry_ids is not None else set(self.trees)
+        now = dt_util.utcnow()
         cleared: list[tuple[str, str]] = []
         for key in list(self.treatments):
             subentry_id, existing_target = key
             if subentry_id in ids and (target is None or existing_target == target):
-                self.treatments.pop(key, None)
+                self._undo_or_retire(key, now, END_CLEARED)
                 cleared.append(key)
         await self.async_save_state()
         await self.async_request_refresh()
         return cleared
+
+    # ------------------------------------------------------------------
+    # Journal des traitements
+    # ------------------------------------------------------------------
+
+    def _journal_entry(self, journal_id: str | None) -> JournalEntry | None:
+        if journal_id is None:
+            return None
+        return next((entry for entry in self.journal if entry.id == journal_id), None)
+
+    def _treatment_key(self, journal_id: str) -> tuple[str, str] | None:
+        """Traitement en cours consigné par cette ligne du journal."""
+        return next(
+            (
+                key
+                for key, treatment in self.treatments.items()
+                if treatment.journal_id == journal_id
+            ),
+            None,
+        )
+
+    def _retire(
+        self,
+        key: tuple[str, str],
+        now: datetime,
+        reason: str,
+        when: datetime | None = None,
+    ) -> None:
+        """Retire un traitement en cours et consigne sa fin dans le journal.
+
+        S'il avait déjà pris fin de lui-même, c'est cette fin-là qui reste :
+        effacer un traitement lessivé la semaine dernière ne le fait pas
+        durer jusqu'à aujourd'hui.
+        """
+        treatment = self.treatments.pop(key, None)
+        entry = self._journal_entry(treatment.journal_id) if treatment else None
+        if entry is None:
+            return
+        ended = treatment.natural_end(now) or (when or now, reason)
+        entry.close(*ended, treatment.rain_since_mm)
+
+    def _undo_or_retire(
+        self,
+        key: tuple[str, str],
+        now: datetime,
+        reason: str,
+        when: datetime | None = None,
+    ) -> None:
+        """Retire un traitement, ou l'annule s'il vient d'être saisi.
+
+        Effacer ou redéclarer dans les heures qui suivent, alors que la
+        protection tient encore, c'est corriger une erreur de saisie : la
+        ligne disparaît du journal au lieu d'y rester comme une application.
+        """
+        treatment = self.treatments.get(key)
+        entry = self._journal_entry(treatment.journal_id) if treatment else None
+        if entry is not None and treatment.is_active(now) and entry.is_correction(now):
+            self.journal.remove(entry)
+            self.treatments.pop(key)
+            return
+        self._retire(key, now, reason, when)
+
+    def _close_ended_treatments(self, now: datetime) -> None:
+        """Consigne la fin des traitements arrivés à terme ou lessivés."""
+        for treatment in self.treatments.values():
+            ended = treatment.natural_end(now)
+            entry = self._journal_entry(treatment.journal_id)
+            if ended is not None and entry is not None:
+                entry.close(*ended, treatment.rain_since_mm)
+
+    def treatment_history(self, subentry_id: str, target: str) -> list[dict]:
+        """Applications précédentes d'un arbre contre une cible."""
+        current = self.treatments.get((subentry_id, target))
+        return journal_history(
+            self.journal,
+            subentry_id,
+            target,
+            exclude=current.journal_id if current else None,
+        )
+
+    async def async_delete_journal_entry(
+        self, journal_id: str
+    ) -> tuple[str, str] | None:
+        """Retire une ligne du journal, et son traitement s'il est en cours.
+
+        Renvoie le couple (arbre, cible) dont le traitement a été retiré.
+        """
+        entry = self._journal_entry(journal_id)
+        if entry is None:
+            return None
+        self.journal.remove(entry)
+        key = self._treatment_key(journal_id)
+        if key is not None:
+            self.treatments.pop(key)
+        await self.async_save_state()
+        await self.async_request_refresh()
+        return key
+
+    async def async_end_treatment(self, journal_id: str) -> tuple[str, str] | None:
+        """Clôt un traitement en cours : il reste au journal, sans renouvellement."""
+        key = self._treatment_key(journal_id)
+        if key is None:
+            return None
+        self._retire(key, dt_util.utcnow(), END_CLEARED)
+        await self.async_save_state()
+        await self.async_request_refresh()
+        return key
 
     async def async_reset_mildew_index(
         self, subentry_ids: list[str] | None = None
@@ -737,7 +923,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             # La saison est close : un traitement en cours ne protège plus
             # rien, et un rappel de renouvellement en plein hiver serait absurde.
             for key in [k for k in self.treatments if k[0] == tree.subentry_id]:
-                self.treatments.pop(key)
+                self._retire(key, now, END_SEASON)
             if changed:
                 self.pending_advances.append(
                     {
@@ -812,7 +998,9 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             existing = tree.biofix.get(pest)
             if existing is not None:
                 continue
-            stages = phenology.ordered_stages(tree.crop)
+            # Toute la suite de la saison compte : un arbre déjà en fruits a
+            # lui aussi dépassé le stade d'ancrage.
+            stages = stage_options(tree.crop)
             anchor = definition.biofix_anchor
             if tree.stage is None or anchor not in stages:
                 continue
@@ -891,12 +1079,29 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         if self.season.in_rest:
             return
 
+        today = dt_util.now().date()
         for tree in self.trees.values():
+            # Arbre ajouté en cours de saison, déjà en fleurs ou en fruits : la
+            # fructification a besoin d'une date de floraison pour avancer.
+            if tree.bloom_date is None and phenology.reached_bloom(
+                tree.crop, tree.stage
+            ):
+                tree.bloom_date = phenology.bloom_reference(
+                    tree.crop, tree.stage, now, None
+                )
+
             offset = tree.effective_offset(self.gdd.season_year)
+            since_bloom = False
             if tree.auto_advance:
                 proposed = phenology.propose_advance(
                     tree.crop, tree.stage, self.gdd.total, offset
                 )
+                # Après la floraison, c'est le temps écoulé qui fait avancer.
+                fruiting = phenology.propose_fruit_stage(
+                    tree.crop, proposed or tree.stage, tree.bloom_date, today
+                )
+                if fruiting is not None:
+                    proposed, since_bloom = fruiting, True
             elif tree.resting:
                 proposed = phenology.wake_stage(tree.crop, self.gdd.total, offset)
             else:
@@ -908,7 +1113,9 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             tree.stage = proposed
             tree.stage_auto_applied = True
             tree.stage_changed_at = now
-            if proposed in phenology.BLOOM_STAGES and tree.bloom_date is None:
+            if tree.bloom_date is None and phenology.reached_bloom(
+                tree.crop, proposed
+            ):
                 tree.bloom_date = now
 
             self.pending_advances.append(
@@ -919,6 +1126,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
                     "previous_stage": previous,
                     "stage": proposed,
                     "gdd": round(self.gdd.total, 1),
+                    "since_bloom": since_bloom,
                 }
             )
 
@@ -932,12 +1140,10 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         now = dt_util.utcnow()
 
         self.load_trees()
-        # Un arbre supprimé emporte ses traitements.
-        self.treatments = {
-            key: treatment
-            for key, treatment in self.treatments.items()
-            if key[0] in self.trees
-        }
+        # Un arbre supprimé emporte ses traitements en cours. Le journal,
+        # lui, garde ce qui a été appliqué.
+        for key in [k for k in self.treatments if k[0] not in self.trees]:
+            self._retire(key, now, END_CLEARED)
 
         values: dict[str, float | None] = {}
         sources: dict[str, str] = {}
@@ -971,6 +1177,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
         hourly = await self._async_get_hourly(
             entry_data, max(HISTORY_HOURS, GDD_HISTORY_DAYS * 24)
         )
+        self._hourly = hourly
         self._update_gdd(hourly)
         self._update_season(entry_data, hourly)
         self._advance_stages(now)
@@ -1055,6 +1262,7 @@ class MeteoSentinelleCoordinator(DataUpdateCoordinator[dict]):
             self.protection[subentry_id] = tree_protection
             results[subentry_id] = tree_results
 
+        self._close_ended_treatments(now)
         self._collect_reminders(results, now)
 
         self.update_interval = timedelta(

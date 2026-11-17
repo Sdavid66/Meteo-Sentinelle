@@ -77,7 +77,7 @@
       btoh: 150,
       stages: [
         ["dormant", 0, -15], ["bud_swell", 150, -6], ["bud_burst", 220, -3],
-        ["first_leaves", 300, -1.5], ["shoots_10cm", 400, -1],
+        ["first_leaves", 300, -1.5], ["shoots_10cm", 400, -1], ["full_leaf", 550, -1],
       ],
     },
     tender_annual: {
@@ -93,6 +93,33 @@
       stages: [["growing", null, -6]],
     },
   };
+
+  //: Fructification : mêmes règles que models/phenology.py, pour que la démo
+  //: montre ce que l'intégration produit réellement.
+  const FRUIT_KEYS = ["fruit_set", "fruit_growth", "ripening", "harvest", "post_harvest"];
+  const fruitStarts = (btoh) => {
+    const growth = Math.max(Math.ceil(btoh * 0.2), 21);
+    return {
+      fruit_set: 14,
+      fruit_growth: growth,
+      ripening: Math.max(Math.ceil(btoh * 0.85), growth + 7),
+      harvest: btoh,
+    };
+  };
+  const hasFruitStages = (crop) => Boolean(TABLES[crop].btoh) && crop !== "vine";
+
+  /** Stade qu'aurait l'arbre dans l'intégration, d'après la scène décrite. */
+  function liveStage(tree, treeGdd) {
+    const table = TABLES[tree.crop];
+    if (tree.crop === "vine" && tree.stage === "shoots_10cm" && treeGdd >= 550) return "full_leaf";
+    if (!hasFruitStages(tree.crop) || tree.bloomDaysAgo === undefined) return tree.stage;
+    if (FRUIT_KEYS.includes(tree.stage)) return tree.stage;
+    let reached = tree.stage;
+    for (const [key, start] of Object.entries(fruitStarts(table.btoh))) {
+      if (tree.bloomDaysAgo >= start) reached = key;
+    }
+    return reached;
+  }
 
   const CYCLES = {
     codling_moth: {
@@ -149,7 +176,16 @@
     "Pommes de terre": "Potatoes",
   };
 
-  const EN_PRODUCTS = { Soufre: "Sulphur", "Bouillie bordelaise": "Bordeaux mixture" };
+  const EN_PRODUCTS = { Soufre: "Sulphur", "Bouillie bordelaise": "Bordeaux mixture", Bicarbonate: "Bicarbonate" };
+
+  /** Une ligne du journal, telle que l'attribut `treatments` l'expose. */
+  const past = (daysAgo, product, days, reason = "expired") => ({
+    applied_at: new Date(Date.now() - daysAgo * D).toISOString(),
+    product,
+    residual_days: days,
+    ended_at: new Date(Date.now() - (daysAgo - days) * D).toISOString(),
+    end_reason: reason,
+  });
 
   const NO_PROTECTION = {
     status: "none", product: null, applied_at: null, protected_until: null,
@@ -210,7 +246,15 @@
       const table = TABLES[tree.crop];
       const device = `dev_${tree.id}`;
       const path = table.stages.map(([key, g, t10]) => ({ key, gdd: g, t10 }));
+      if (hasFruitStages(tree.crop)) {
+        // Fruits sur l'arbre : seuil du jeune fruit. Après récolte : celui du bois.
+        const fruit = path[path.length - 1].t10;
+        for (const key of FRUIT_KEYS) {
+          path.push({ key, gdd: null, t10: key === "post_harvest" ? path[1].t10 : fruit });
+        }
+      }
       const treeGdd = tree.gdd ?? gdd;
+      tree.stage = liveStage(tree, treeGdd);
       const index = path.findIndex((step) => step.key === tree.stage);
       const next = path.slice(index + 1).find((step) => step.gdd !== null);
       const current = path[index] || {};
@@ -227,6 +271,16 @@
         stageAttributes.next_stage = next.key;
         stageAttributes.next_stage_gdd = next.gdd;
         stageAttributes.gdd_to_next_stage = Math.max(0, next.gdd - (inRest ? 0 : treeGdd));
+      } else if (hasFruitStages(tree.crop) && tree.bloomDaysAgo !== undefined) {
+        // Après le dernier seuil de chaleur, la suite s'annonce en jours.
+        const following = Object.entries(fruitStarts(table.btoh)).find(
+          ([key]) => path.findIndex((step) => step.key === key) > index
+        );
+        if (following) {
+          stageAttributes.next_stage_key = following[0];
+          stageAttributes.next_stage = following[0];
+          stageAttributes.days_to_next_stage = Math.max(0, following[1] - tree.bloomDaysAgo);
+        }
       }
       if (bloom) {
         stageAttributes.bloom_date = bloom;
@@ -248,7 +302,14 @@
           protection = Object.assign({}, protection, { product: EN_PRODUCTS[protection.product] });
         }
         const attributes = { ...common, model };
-        if (protection) attributes.protection = protection;
+        if (protection) {
+          attributes.protection = protection;
+          attributes.treatments = (wanted.history || []).map((item) =>
+            lang === "en" && EN_PRODUCTS[item.product]
+              ? Object.assign({}, item, { product: EN_PRODUCTS[item.product] })
+              : item
+          );
+        }
 
         if (model === "frost") {
           const min = wanted.min ?? 6;
@@ -310,6 +371,8 @@
       in_the_shuck: "Jeune fruit engainé", shuck_split: "Sortie de l'engainement", side_white: "Blanc latéral",
       calyx_green: "Calice vert", quarter_inch_green: "Pousse de 0,5 cm", pink: "Stade rose",
       bud_swell: "Bourgeon gonflé", first_leaves: "Premières feuilles", shoots_10cm: "Rameaux 10 cm",
+      full_leaf: "Pleine végétation", fruit_set: "Jeunes fruits", fruit_growth: "Fruits en croissance",
+      ripening: "Maturation des fruits", harvest: "Récolte", post_harvest: "Après récolte",
       growing: "En végétation", emerged: "Levée effectuée",
     },
     en: {
@@ -320,7 +383,9 @@
       white_bud: "White bud", full_white: "Full white", first_swell: "First swell", tip_separation: "Tip separation",
       first_white: "First white", in_the_shuck: "In the shuck", shuck_split: "Shuck split", side_white: "Side white",
       calyx_green: "Calyx green", quarter_inch_green: "Quarter-inch green", pink: "Pink", bud_swell: "Bud swell",
-      first_leaves: "First leaves", shoots_10cm: "10 cm shoots", growing: "Growing", emerged: "Emerged",
+      first_leaves: "First leaves", shoots_10cm: "10 cm shoots", full_leaf: "Full leaf",
+      fruit_set: "Young fruit", fruit_growth: "Fruit growing", ripening: "Fruit ripening",
+      harvest: "Harvest", post_harvest: "After harvest", growing: "Growing", emerged: "Emerged",
     },
   };
 
@@ -360,7 +425,7 @@
         ...o,
         gdd: 505,
         trees: [
-          { id: "golden", name: "Golden", crop: "apple", stage: "full_bloom", bloomDaysAgo: 2, frost: { level: "severe", min: -3.4, t10: -2.2, t90: -3.9, inHours: 14 } , risks: { codling_moth: { dd: 2, biofix: null, awaiting: true }, powdery_mildew: { level: "watch", index: 30, protection: { status: "protected", product: "Soufre", applied_at: new Date(Date.now() - 2 * D).toISOString(), protected_until: new Date(Date.now() + 5 * D).toISOString(), hours_remaining: 120, days_remaining: 5, rain_since_mm: 3, rainfast_mm: 20, residual_days: 7 } } } },
+          { id: "golden", name: "Golden", crop: "apple", stage: "full_bloom", bloomDaysAgo: 2, frost: { level: "severe", min: -3.4, t10: -2.2, t90: -3.9, inHours: 14 } , risks: { codling_moth: { dd: 2, biofix: null, awaiting: true }, powdery_mildew: { level: "watch", index: 30, protection: { status: "protected", product: "Soufre", applied_at: new Date(Date.now() - 2 * D).toISOString(), protected_until: new Date(Date.now() + 5 * D).toISOString(), hours_remaining: 120, days_remaining: 5, rain_since_mm: 3, rainfast_mm: 20, residual_days: 7 }, history: [past(11, "Soufre", 7, "washed_off")] } } },
           { id: "abricotier", name: "Abricotier", crop: "apricot", stage: "shuck_split", bloomDaysAgo: 32, frost: { level: "warning", min: -3.4, t10: -2.2, t90: -3.9, inHours: 14 } },
           { id: "cerisier", name: "Cerisier du fond", crop: "sweet_cherry", stage: "full_bloom", bloomDaysAgo: 3, frost: { level: "warning", min: -2.6, t10: -2.2, t90: -3.9, inHours: 14 } },
           { id: "peche", name: "Pêcher", crop: "peach", stage: "pink", gdd: 240, frost: { level: "watch", min: -2.5, t10: -3.9, t90: -9.4, inHours: 14 } },
@@ -373,7 +438,7 @@
         spray: { first: 3 * H },
         trees: [
           { id: "golden", name: "Golden", crop: "apple", stage: "full_bloom", bloomDaysAgo: 70, frost: { min: 13 }, risks: { codling_moth: { level: "severe", dd: 142, biofix: "2026-05-02", estimated: true }, powdery_mildew: { level: "warning", index: 70, interval: 7 } } },
-          { id: "conference", name: "Conférence", crop: "pear", stage: "petal_fall", bloomDaysAgo: 75, frost: { min: 13 }, risks: { codling_moth: { level: "watch", dd: 60, biofix: "2026-05-02" }, powdery_mildew: { level: "warning", index: 62, interval: 7, protection: { status: "protected", product: "Soufre", applied_at: new Date(Date.now() - 5 * D).toISOString(), protected_until: new Date(Date.now() + 5 * D).toISOString(), hours_remaining: 120, days_remaining: 5, rain_since_mm: 3, rainfast_mm: 20, residual_days: 10 } } } },
+          { id: "conference", name: "Conférence", crop: "pear", stage: "petal_fall", bloomDaysAgo: 75, frost: { min: 13 }, risks: { codling_moth: { level: "watch", dd: 60, biofix: "2026-05-02" }, powdery_mildew: { level: "warning", index: 62, interval: 7, protection: { status: "protected", product: "Soufre", applied_at: new Date(Date.now() - 5 * D).toISOString(), protected_until: new Date(Date.now() + 5 * D).toISOString(), hours_remaining: 120, days_remaining: 5, rain_since_mm: 3, rainfast_mm: 20, residual_days: 10 }, history: [past(16, "Soufre", 10, "replaced"), past(31, "Bicarbonate", 7, "washed_off")] } } },
           { id: "tomates", name: "Tomates", crop: "tender_annual", stage: "growing", gdd: 1100, frost: { min: 13 }, risks: { late_blight: { level: "warning", hutton: true, days: 2, protection: { status: "washed_off", product: "Bouillie bordelaise", applied_at: new Date(Date.now() - 6 * D).toISOString(), protected_until: null, hours_remaining: 0, days_remaining: 0, rain_since_mm: 24, rainfast_mm: 20, residual_days: 10 } } } },
           { id: "vigne", name: "Vigne de la treille", crop: "vine", stage: "shoots_10cm", gdd: 1250, frost: { min: 13 }, risks: { grapevine_moth: { level: "warning", dd: 800 }, powdery_mildew: { level: "none", index: 10 } } },
           { id: "patates", name: "Pommes de terre", crop: "potato", stage: "emerged", gdd: 900, frost: { min: 13 }, risks: { colorado_potato_beetle: { level: "severe", dd: 140, biofix: "2026-06-10" } } },
@@ -390,7 +455,7 @@
           { id: "golden", name: "Golden", crop: "apple", stage: "full_bloom", bloomDaysAgo: 135, frost: { min: 12 }, risks: { codling_moth: { dd: 620, biofix: "2026-05-02" } } },
           { id: "conference", name: "Conférence", crop: "pear", stage: "petal_fall", bloomDaysAgo: 136, frost: { min: 12 } },
           { id: "prunier", name: "Reine-Claude", crop: "plum", stage: "post_bloom", bloomDaysAgo: 118, frost: { min: 12 } },
-          { id: "abricotier", name: "Abricotier", crop: "apricot", stage: "shuck_split", bloomDaysAgo: 140, frost: { min: 12 } },
+          { id: "abricotier", name: "Abricotier", crop: "apricot", stage: "post_harvest", bloomDaysAgo: 140, frost: { min: 12 } },
           { id: "tomates", name: "Tomates", crop: "tender_annual", stage: "growing", gdd: 1600, frost: { min: 12 } },
           { id: "choux", name: "Choux", crop: "hardy_vegetable", stage: "growing", frost: { min: 12 } },
         ],

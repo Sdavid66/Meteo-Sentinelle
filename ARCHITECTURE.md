@@ -473,6 +473,55 @@ en événement `meteo_sentinelle_treatment_due` et en notification. Le texte est
 rédigé côté intégration et voyage dans l'événement (`title`, `message`) : un
 blueprint n'a rien à réécrire, et reste indépendant de la langue.
 
+### Journal des traitements : ce qui protège, et ce qui a été fait
+
+Deux structures, deux questions. `coordinator.treatments` répond à « où en
+est la protection ? » : un traitement au plus par couple (arbre, cible),
+remplacé par le suivant. `coordinator.journal` répond à « qu'est-ce qui a été
+appliqué ? » : une ligne par application, qui survit au remplacement, à la fin
+de la protection et à la suppression de l'arbre — elle porte donc le nom de
+l'arbre, pas seulement son identifiant.
+
+Le traitement en cours pointe sa ligne (`journal_id`). Quand il prend fin, la
+ligne est close une seule fois, avec son motif : terme, lessivage, traitement
+suivant, clôture à la main ou repos hivernal. Une fin naturelle déjà survenue
+prime toujours : effacer un traitement lessivé la semaine dernière ne le fait
+pas durer jusqu'à aujourd'hui.
+
+Effacer ou redéclarer un traitement encore actif dans les 24 heures qui
+suivent sa saisie le **retire** du journal au lieu de le clore : c'est une
+correction, pas une application de plus. Au-delà, la seule façon de retirer
+une ligne est de supprimer son événement dans le calendrier.
+
+Le calendrier (`calendar.py`) n'a pas de stockage propre : ses événements sont
+recalculés à partir du journal et des traitements en cours. Un événement par
+ligne, plus un « à renouveler » par traitement en cours, dont l'identifiant
+reprend celui de la ligne avec un préfixe — c'est ce qui dit, à la suppression,
+lequel des deux est visé.
+
+Un traitement déclaré après coup est daté à midi du jour indiqué. Le cumul de
+pluie n'étant tenu qu'à partir de la déclaration, la pluie tombée entre-temps
+est relue dans les relevés horaires du dernier cycle (dix jours).
+
+### Fructification : le temps écoulé, pas les degrés-jours
+
+Les seuils publiés s'arrêtent à la floraison. Les stades suivants (`fruit_set`,
+`fruit_growth`, `ripening`, `harvest`, `post_harvest`) sont de vrais stades,
+listés dans `Crop.stages` avec leurs seuils de gel, mais ils avancent d'après
+`Tree.bloom_date` et la durée floraison → récolte de l'espèce
+(`phenology.fruit_stage`). Auparavant, la carte déduisait seule un libellé
+« Fruits en croissance » pendant que l'entité restait à « Pleine floraison ».
+
+Même règle que pour les degrés-jours : l'avancement est monotone, et une
+correction manuelle fait autorité. `phenology.bloom_reference` recale alors la
+date de floraison pour que le stade choisi commence maintenant — l'équivalent
+de `correction_shift` pour le temps.
+
+`post_harvest` n'est jamais appliqué automatiquement. C'est le seul stade qui
+relâche les seuils de gel (il ne reste que le bois), et la durée floraison →
+récolte est une moyenne par espèce : une variété tardive perdrait ses alertes
+alors que ses fruits sont encore sur l'arbre.
+
 ### Saisons : le stade porte l'état de repos
 
 `models/season.py` déduit du lieu (`hass.config.latitude`, `elevation`) le

@@ -224,6 +224,9 @@ entités sont rattachées à cet appareil :
   appliquer le mildiou de la pomme de terre à un pommier n'aurait aucun
   sens agronomique.
 
+L'appareil du site porte ce qui est commun à tous les arbres : degrés-jours,
+saison, fenêtre de traitement et calendrier des traitements.
+
 **Comment distinguer les stades d'un arbre à l'autre ?** Le contexte
 vient de l'appareil : l'entité appartient à l'appareil de l'arbre, donc
 Home Assistant l'affiche *« Pommier Golden du fond — Stade
@@ -250,9 +253,31 @@ Trois garde-fous :
 - **tout est débrayable.** L'interrupteur *Avancement automatique*
   coupe l'automatisme pour un arbre donné.
 
+**Après la floraison**, les degrés-jours n'ont plus rien à dire : les
+seuils publiés s'arrêtent là. La suite se lit sur le temps écoulé depuis
+la floraison, rapporté à la durée floraison → récolte de l'espèce :
+
+| Stade | Début |
+|---|---|
+| Jeunes fruits | deux semaines après le début de la floraison |
+| Fruits en croissance | au cinquième de la durée |
+| Maturation des fruits | aux 85 % de la durée |
+| Récolte | au terme de la durée |
+| Après récolte | **jamais tout seul** : c'est vous qui le déclarez |
+
+Ces durées dépendent beaucoup de la variété. C'est une estimation, et
+votre correction la recale comme le reste : choisissez « Maturation des
+fruits », la récolte est annoncée à partir de là.
+
+« Après récolte » relâche la surveillance du gel, puisqu'il ne reste que
+le bois. C'est pourquoi il ne s'applique jamais tout seul : une variété
+tardive encore chargée de fruits ne doit pas perdre ses alertes sur la
+foi d'une durée moyenne. La vigne, dont la floraison n'est pas suivie,
+passe simplement en « Pleine végétation ».
+
 Le capteur de stade expose aussi le prochain stade attendu, les
-degrés-jours restants pour l'atteindre, la date de floraison relevée et
-une estimation des jours avant récolte.
+degrés-jours ou les jours restants pour l'atteindre, la date de floraison
+et une estimation des jours avant récolte.
 
 ⚠️ **Ces seuils sont calibrés régionalement.** Les valeurs de référence
 proviennent de données nord-américaines (base 42 °F, MSU Enviroweather).
@@ -438,14 +463,15 @@ chose, et quand ?
   dangereux, la température prévue face aux seuils de dégâts, l'indice
   oïdium, le cycle du ravageur et les jalons où intervenir.
 - **Les gestes se déclarent depuis la carte.** « J'ai traité » ouvre un
-  petit formulaire (produit, durée de protection, lessivage) et programme
-  le rappel de renouvellement. « Première capture aujourd'hui » se confirme
-  d'une seconde pression. Si l'arbre n'en est pas là où le modèle le pense,
-  la liste « Stade observé » le corrige.
+  petit formulaire (produit, date, durée de protection, lessivage) et
+  programme le rappel de renouvellement. « Première capture aujourd'hui »
+  se confirme d'une seconde pression. Si l'arbre n'en est pas là où le
+  modèle le pense, la liste « Stade observé » le corrige, du repos
+  jusqu'à « Après récolte ».
 - **Un arbre traité le montre** : un bouclier sur sa scène, puis dans le
-  détail « Protégé jusqu'au 20 juin · encore 5 j », le produit et la pluie
-  reçue. Quand la protection est terminée et que le risque est encore là,
-  la carte indique « À renouveler ».
+  détail « Protégé jusqu'au 20 juin · encore 5 j », le produit, la pluie
+  reçue et les traitements précédents. Quand la protection est terminée
+  et que le risque est encore là, la carte indique « À renouveler ».
 - **Les fenêtres de traitement** des 48 prochaines heures sont affichées en
   bas. Le message retient le premier créneau entre 7 h et 21 h.
 
@@ -461,10 +487,9 @@ title: Le verger du fond
 show_spray: false
 ```
 
-Passé le dernier stade suivi, le dessin et le libellé « Fruits en croissance »
-se déduisent de la date de floraison, ou à défaut de la chaleur reçue. Les
-délais en jours (« dans ~5 j ») extrapolent la chaleur des sept derniers jours.
-Ce sont des ordres de grandeur.
+Les fruits dessinés grossissent et mûrissent d'après la date de floraison.
+Avant la floraison, les délais en jours (« dans ~5 j ») extrapolent la chaleur
+des sept derniers jours. Ce sont des ordres de grandeur.
 
 ## Commandes vocales (Assist)
 
@@ -520,6 +545,12 @@ Vous choisissez la culture à la configuration ; le **stade
 phénologique** se change ensuite à tout moment depuis l'entité
 `select.…_stade_phenologique` — utile pour l'automatiser ou l'ajuster
 en observant le verger.
+
+Ces tables s'arrêtent au jeune fruit. Tant qu'il y a des fruits sur
+l'arbre, leur dernière ligne reste la référence. Une fois la récolte
+déclarée, il ne reste que le bois et les bourgeons de l'année suivante :
+le seuil retenu est celui d'un bourgeon qui sort de dormance, un ordre
+de grandeur prudent.
 
 L'intégration estime aussi la **température de surface** : sous ciel
 dégagé et vent faible, le rayonnement nocturne refroidit le sol de 3 à
@@ -654,7 +685,15 @@ data:
   product: Soufre mouillable
   residual_days: 10
   rainfast_mm: 20
+  date: "2026-06-14"             # omis = maintenant
 ```
+
+**Déclarer après coup.** Le champ « Appliqué le » du formulaire, ou
+`date` dans l'action, date un traitement fait la veille ou la semaine
+dernière : la protection et le rappel partent du bon jour. La pluie
+tombée entre-temps est relue dans l'historique, sur dix jours au plus.
+Un traitement déjà terminé au moment de le déclarer est consigné sans
+déclencher de rappel. Une date future est refusée.
 
 **Ce que l'intégration en déduit.** Une entité **Protection …** par
 arbre et par cible donne la date de fin de protection, en tenant compte
@@ -684,8 +723,25 @@ ou `washed_off`), `product`, `applied_at`, `protected_until`,
 `message` déjà rédigés dans la langue de Home Assistant.
 
 Il n'y a pas de préavis pour une protection de moins de trois jours, ni
-de rappel en hiver : à l'entrée en repos, les traitements de la saison
-sont effacés.
+de rappel en hiver : à l'entrée en repos, les traitements en cours sont
+clos.
+
+**Le journal et le calendrier.** Chaque application reste consignée,
+même une fois remplacée, terminée ou l'arbre supprimé. Le journal se lit
+dans le **calendrier de Home Assistant**, où l'intégration ajoute un
+calendrier « Traitements » par site :
+
+- un événement par traitement, qui couvre la période protégée, avec le
+  produit et ce qui y a mis fin (terme, lessivage, traitement suivant) ;
+- un événement **« À renouveler »** par traitement en cours, posé sur le
+  jour où la protection se termine. Il disparaît quand vous déclarez le
+  traitement suivant.
+
+Supprimer un traitement depuis le calendrier le retire du journal : c'est
+la voie pour corriger une saisie ancienne. « Effacer » dans la carte fait
+de même tant que le traitement a moins de 24 h ; au-delà, il a bien eu
+lieu et reste au journal. Le journal garde trois saisons. La carte en
+rappelle les trois dernières applications sous chaque risque.
 
 Le suivi est **par arbre** : vous pouvez traiter le pommier aujourd'hui
 et le poirier la semaine prochaine sans que les deux se confondent.
@@ -747,9 +803,12 @@ en deçà d'un outil professionnel sur trois points :
 - v1.3 : nouvelle carte illustrée — une scène par arbre, qui suit son
   stade et montre ce qui le menace ; correction du stade depuis la carte ;
   compatibilité avec les écrans muraux à navigateur ancien.
-- **v1.4 (actuelle)** : déclaration d'un traitement depuis la carte et
-  rappel de renouvellement — la veille, à l'échéance, ou dès que la pluie
-  a lessivé le produit.
+- v1.4 : déclaration d'un traitement depuis la carte et rappel de
+  renouvellement — la veille, à l'échéance, ou dès que la pluie a lessivé
+  le produit.
+- **v1.5 (actuelle)** : stades suivis jusqu'à la récolte ; traitement
+  déclaré après coup ; journal des traitements et calendrier des
+  renouvellements.
 - Ensuite : tavelure du pommier (table de Mills), cohortes d'infection
   avec latence pour le mildiou, sensibilité variétale, apprentissage du
   décalage de degrés-jours sur les corrections manuelles.

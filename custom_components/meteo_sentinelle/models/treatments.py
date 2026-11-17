@@ -22,11 +22,16 @@ protégé ne sert que si l'on apprend aussi quand on ne l'est plus. Deux
 moments sont signalés, une seule fois chacun : la veille de l'échéance,
 pour laisser le temps de trouver une fenêtre de traitement, et la fin de
 la protection — à l'échéance, ou plus tôt si la pluie l'a lessivée.
+
+Chaque application est aussi consignée dans un **journal**. Le traitement
+en cours dit où en est la protection ; le journal garde ce qui a été fait,
+y compris une fois le traitement remplacé, terminé ou l'arbre supprimé.
 """
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
+from uuid import uuid4
 
 #: Valeurs par défaut prudentes, à ajuster selon l'étiquette du produit.
 DEFAULT_RESIDUAL_DAYS = 7.0
@@ -43,6 +48,21 @@ REMINDER_LEAD_HOURS = 24.0
 #: En deçà de cette rémanence, le préavis suivrait de trop près l'application.
 MIN_RESIDUAL_DAYS_FOR_NOTICE = 3.0
 
+#: Ce qui a mis fin à un traitement du journal. Les deux premiers reprennent
+#: les états de `status`.
+END_EXPIRED = "expired"
+END_WASHED_OFF = "washed_off"
+END_REPLACED = "replaced"
+END_CLEARED = "cleared"
+END_SEASON = "season_end"
+
+#: Délai pendant lequel effacer ou redéclarer un traitement encore actif
+#: corrige la saisie, au lieu d'ajouter une ligne au journal.
+CORRECTION_WINDOW_HOURS = 24.0
+#: Le journal garde trois saisons : de quoi comparer d'une année à l'autre.
+JOURNAL_KEEP_DAYS = 3 * 365
+JOURNAL_MAX_ENTRIES = 500
+
 
 @dataclass
 class Treatment:
@@ -57,6 +77,8 @@ class Treatment:
     #: Rappels déjà émis. Persistés : un redémarrage ne doit pas les rejouer.
     notice_sent: bool = False
     end_sent: bool = False
+    #: Ligne du journal qui consigne cette application.
+    journal_id: str | None = None
 
     # --- Sérialisation pour le Store Home Assistant ---
 
@@ -80,6 +102,7 @@ class Treatment:
             rain_since_mm=float(data.get("rain_since_mm", 0.0)),
             notice_sent=bool(data.get("notice_sent", False)),
             end_sent=bool(data.get("end_sent", False)),
+            journal_id=data.get("journal_id"),
         )
 
     # --- Logique de protection ---
@@ -111,6 +134,18 @@ class Treatment:
             return "expired"
         return "protected"
 
+    def natural_end(self, now: datetime) -> tuple[datetime, str] | None:
+        """(moment, motif) de la fin de protection, ou None si elle tient.
+
+        Le lessivage est daté du moment où on le constate : le cumul de pluie
+        n'est relevé qu'à chaque cycle, pas à la minute.
+        """
+        if self.washed_off:
+            return now, END_WASHED_OFF
+        if self.remaining_hours(now) <= 0:
+            return self.expires_at, END_EXPIRED
+        return None
+
     def add_rain(self, millimetres: float) -> None:
         """Cumule la pluie tombée depuis l'application.
 
@@ -120,6 +155,185 @@ class Treatment:
         """
         if millimetres > 0:
             self.rain_since_mm += millimetres
+
+
+@dataclass
+class JournalEntry:
+    """Une application, telle qu'elle reste consignée.
+
+    L'arbre y figure par son nom : la ligne doit rester lisible une fois
+    l'arbre renommé ou supprimé.
+    """
+
+    id: str
+    subentry_id: str
+    tree: str
+    crop: str
+    target: str
+    product: str
+    applied_at: datetime
+    residual_days: float
+    rainfast_mm: float
+    logged_at: datetime
+    ended_at: datetime | None = None
+    end_reason: str | None = None
+    #: Pluie reçue entre l'application et la fin, si elle est connue.
+    rain_mm: float | None = None
+
+    @classmethod
+    def record(
+        cls,
+        subentry_id: str,
+        tree: str,
+        crop: str,
+        treatment: Treatment,
+        logged_at: datetime,
+    ) -> "JournalEntry":
+        """Ouvre la ligne d'un traitement et les relie l'un à l'autre."""
+        entry = cls(
+            id=uuid4().hex,
+            subentry_id=subentry_id,
+            tree=tree,
+            crop=crop,
+            target=treatment.target,
+            product=treatment.product,
+            applied_at=treatment.applied_at,
+            residual_days=treatment.residual_days,
+            rainfast_mm=treatment.rainfast_mm,
+            logged_at=logged_at,
+        )
+        treatment.journal_id = entry.id
+        return entry
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+        for key in ("applied_at", "logged_at", "ended_at"):
+            data[key] = data[key].isoformat() if data[key] else None
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "JournalEntry | None":
+        try:
+            applied_at = datetime.fromisoformat(data["applied_at"])
+            logged_at = datetime.fromisoformat(data.get("logged_at") or data["applied_at"])
+            ended_at = (
+                datetime.fromisoformat(data["ended_at"]) if data.get("ended_at") else None
+            )
+            return cls(
+                id=str(data["id"]),
+                subentry_id=str(data.get("subentry_id", "")),
+                tree=str(data.get("tree", "")),
+                crop=str(data.get("crop", "")),
+                target=str(data["target"]),
+                product=str(data.get("product", "")),
+                applied_at=applied_at,
+                residual_days=float(data.get("residual_days", DEFAULT_RESIDUAL_DAYS)),
+                rainfast_mm=float(data.get("rainfast_mm", DEFAULT_RAINFAST_MM)),
+                logged_at=logged_at,
+                ended_at=ended_at,
+                end_reason=data.get("end_reason"),
+                rain_mm=data.get("rain_mm"),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    @property
+    def planned_end(self) -> datetime:
+        """Fin de protection prévue à l'application."""
+        return self.applied_at + timedelta(days=self.residual_days)
+
+    @property
+    def end(self) -> datetime:
+        """Fin réelle si elle est connue, sinon celle qui était prévue."""
+        return self.ended_at or self.planned_end
+
+    def close(
+        self, when: datetime, reason: str, rain_mm: float | None = None
+    ) -> None:
+        """Consigne la fin de la protection, une seule fois.
+
+        Un traitement ne finit ni avant d'avoir commencé, ni après le terme
+        de sa rémanence : effacer un traitement déjà expiré ne repousse pas
+        sa fin à aujourd'hui.
+        """
+        if self.ended_at is not None:
+            return
+        self.ended_at = max(self.applied_at, min(when, self.planned_end))
+        self.end_reason = reason
+        if rain_mm is not None:
+            self.rain_mm = round(rain_mm, 1)
+
+    def is_correction(self, now: datetime) -> bool:
+        """La ligne vient-elle d'être saisie ? Elle se corrige encore."""
+        return (
+            self.ended_at is None
+            and now - self.logged_at < timedelta(hours=CORRECTION_WINDOW_HOURS)
+        )
+
+    def summary(self) -> dict:
+        """Ce qu'il faut pour afficher la ligne dans la carte."""
+        return {
+            "applied_at": self.applied_at.isoformat(),
+            "product": self.product,
+            "residual_days": self.residual_days,
+            "ended_at": self.end.isoformat(),
+            "end_reason": self.end_reason,
+        }
+
+
+def prune_journal(journal: list[JournalEntry], now: datetime) -> list[JournalEntry]:
+    """Journal trié par date d'application, sans ses lignes trop anciennes."""
+    cutoff = now - timedelta(days=JOURNAL_KEEP_DAYS)
+    kept = sorted(
+        (entry for entry in journal if entry.applied_at >= cutoff),
+        key=lambda entry: entry.applied_at,
+    )
+    return kept[-JOURNAL_MAX_ENTRIES:]
+
+
+def journal_history(
+    journal: list[JournalEntry],
+    subentry_id: str,
+    target: str,
+    exclude: str | None = None,
+    limit: int = 3,
+) -> list[dict]:
+    """Applications précédentes d'un arbre contre une cible, la plus récente d'abord."""
+    entries = [
+        entry
+        for entry in journal
+        if entry.subentry_id == subentry_id
+        and entry.target == target
+        and entry.id != exclude
+    ]
+    entries.sort(key=lambda entry: entry.applied_at, reverse=True)
+    return [entry.summary() for entry in entries[:limit]]
+
+
+def applied_moment(day: date | None, now: datetime) -> datetime:
+    """Moment retenu pour une application déclarée à une date.
+
+    `now` est l'heure locale. Sans date, ou pour aujourd'hui, c'est
+    maintenant. Pour un jour passé, l'heure n'est pas connue : midi coupe la
+    poire en deux, l'erreur ne dépasse pas une demi-journée.
+    """
+    if day is None or day >= now.date():
+        return now
+    return datetime.combine(day, time(12, 0), tzinfo=now.tzinfo)
+
+
+def rain_since(samples: list, since: datetime) -> float:
+    """Pluie tombée depuis `since`, d'après les relevés horaires disponibles.
+
+    Sert aux traitements déclarés après coup : le cumul tenu à chaque cycle
+    ne commence qu'à la déclaration. L'heure de l'application elle-même n'est
+    pas comptée, un produit pulvérisé sous la pluie ne se déclare pas.
+    """
+    return sum(
+        sample.rain_mm
+        for sample in samples
+        if sample.time >= since and sample.rain_mm > 0
+    )
 
 
 def protection_state(

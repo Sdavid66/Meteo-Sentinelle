@@ -514,10 +514,14 @@ check(_south.complete_season, "et couvre bien le début de la saison australe")
 
 # Parcours d'une espèce, lu par la carte : tout vient des tables du plugin.
 _path = phenology.stage_path("apple")
-check(_path[0]["key"] == crops.DORMANT and _path[-1]["key"] == "full_bloom",
-      "le parcours va du repos à la floraison")
-check(_path[-1]["gdd"] == 500 and _path[-1]["t10"] == -2.2,
+check(_path[0]["key"] == crops.DORMANT and _path[-1]["key"] == crops.POST_HARVEST,
+      "le parcours va du repos à l'après-récolte")
+_bloom_step = next(step for step in _path if step["key"] == "full_bloom")
+check(_bloom_step["gdd"] == 500 and _bloom_step["t10"] == -2.2,
       "chaque stade porte son seuil de chaleur et sa sensibilité au gel")
+check(all(step["gdd"] is None and step["t10"] is not None
+          for step in _path if step["key"] in crops.FRUIT_STAGES),
+      "la fructification n'a pas de seuil de chaleur, mais garde un seuil de gel")
 _annual = phenology.stage_path("tender_annual")
 check(_annual[0] == {"key": crops.OFF_SEASON, "gdd": None, "t10": None},
       "le hors saison n'a ni seuil de chaleur ni sensibilité au gel")
@@ -681,6 +685,103 @@ check(treatments.Treatment.from_dict({"bogus": 1}) is None,
       "données corrompues : rejet propre sans exception")
 
 # ======================================================================
+print("\n--- traitements : journal et date d'application ---")
+# ======================================================================
+
+_app = datetime(2026, 6, 1, 9, 0)
+
+
+def _logged(product, applied_at, days=7.0, target="powdery_mildew", sub="sub1"):
+    treatment = treatments.Treatment(target=target, product=product,
+                                     applied_at=applied_at, residual_days=days,
+                                     rainfast_mm=20)
+    entry = treatments.JournalEntry.record(sub, "Pommier Golden", "apple",
+                                           treatment, applied_at)
+    return treatment, entry
+
+
+_tr, _entry = _logged("Soufre", _app)
+check(_tr.journal_id == _entry.id, "le traitement et sa ligne du journal sont reliés")
+check(_entry.end == _app + timedelta(days=7) and _entry.ended_at is None,
+      "ligne ouverte : la fin affichée est celle prévue à l'application")
+check(_entry.is_correction(_app + timedelta(hours=3))
+      and not _entry.is_correction(_app + timedelta(hours=30)),
+      "une saisie se corrige dans les 24 h, plus après")
+
+check(_tr.natural_end(_app + timedelta(days=2)) is None,
+      "protection en cours : pas de fin à consigner")
+check(_tr.natural_end(_app + timedelta(days=8))
+      == (_app + timedelta(days=7), treatments.END_EXPIRED),
+      "rémanence écoulée : la fin est datée de l'échéance, pas du constat")
+_seen = _app + timedelta(days=2)
+_tr.add_rain(25)
+check(_tr.natural_end(_seen) == (_seen, treatments.END_WASHED_OFF),
+      "lessivage : la fin est datée du moment où on le constate")
+
+_entry.close(_seen, treatments.END_WASHED_OFF, 25.04)
+check(_entry.ended_at == _seen and _entry.end_reason == treatments.END_WASHED_OFF
+      and _entry.rain_mm == 25.0,
+      "la fin est consignée avec son motif et la pluie reçue")
+check(not _entry.is_correction(_app + timedelta(hours=3)),
+      "un traitement terminé ne se corrige plus : il a eu lieu")
+_entry.close(_seen + timedelta(days=5), treatments.END_CLEARED)
+check(_entry.ended_at == _seen and _entry.end_reason == treatments.END_WASHED_OFF,
+      "une fin consignée ne se réécrit pas")
+
+_, _late_close = _logged("Soufre", _app)
+_late_close.close(_app + timedelta(days=30), treatments.END_CLEARED)
+check(_late_close.ended_at == _app + timedelta(days=7),
+      "effacer un traitement expiré ne le fait pas durer jusqu'à aujourd'hui")
+_, _early_close = _logged("Soufre", _app)
+_early_close.close(_app - timedelta(days=1), treatments.END_REPLACED)
+check(_early_close.ended_at == _app, "un traitement ne finit pas avant d'avoir commencé")
+
+_back = treatments.JournalEntry.from_dict(_entry.to_dict())
+check(_back == _entry, "le journal survit à un aller-retour par le stockage")
+check(treatments.JournalEntry.from_dict({"id": "x"}) is None,
+      "ligne corrompue : rejet propre sans exception")
+
+_, _first = _logged("Soufre", _app)
+_, _second = _logged("Bicarbonate", _app + timedelta(days=10))
+_cur_tr, _third = _logged("Soufre mouillable", _app + timedelta(days=20))
+_, _other = _logged("Bouillie", _app + timedelta(days=5), target="late_blight")
+_, _elsewhere = _logged("Soufre", _app + timedelta(days=6), sub="sub2")
+_journal = [_first, _second, _third, _other, _elsewhere]
+_history = treatments.journal_history(_journal, "sub1", "powdery_mildew",
+                                      exclude=_cur_tr.journal_id)
+check([item["product"] for item in _history] == ["Bicarbonate", "Soufre"],
+      "historique d'un arbre contre une cible : le plus récent d'abord, sans le traitement en cours")
+check(_history[0]["ended_at"] == (_app + timedelta(days=17)).isoformat(),
+      "chaque ligne de l'historique porte sa fin")
+
+_, _ancient = _logged("Soufre", _app - timedelta(days=4 * 365))
+check(treatments.prune_journal([_third, _ancient, _first], _app + timedelta(days=30))
+      == [_first, _third],
+      "le journal est trié, et oublie ce qui a plus de trois saisons")
+
+# Traitement déclaré après coup
+from zoneinfo import ZoneInfo as _ZoneInfo
+
+_zurich = _ZoneInfo("Europe/Zurich")
+_local_now = datetime(2026, 6, 10, 9, 30, tzinfo=_zurich)
+check(treatments.applied_moment(None, _local_now) == _local_now,
+      "sans date : le traitement est daté de maintenant")
+check(treatments.applied_moment(date(2026, 6, 10), _local_now) == _local_now,
+      "daté d'aujourd'hui : maintenant, pas midi")
+check(treatments.applied_moment(date(2026, 6, 9), _local_now)
+      == datetime(2026, 6, 9, 12, 0, tzinfo=_zurich),
+      "daté d'hier : midi, heure locale")
+check(treatments.applied_moment(date(2026, 6, 20), _local_now) == _local_now,
+      "une date future ne fait jamais commencer la protection dans l'avenir")
+
+_rain = [hourly.HourlySample(time=_app + timedelta(hours=h),
+                             rain_mm=1.5 if h in (-2, 2, 5) else 0.0)
+         for h in range(-3, 10)]
+check(abs(treatments.rain_since(_rain, _app) - 3.0) < 1e-9,
+      "pluie relue dans l'historique : seulement celle tombée depuis l'application")
+check(treatments.rain_since([], _app) == 0.0, "sans historique : aucune pluie connue")
+
+# ======================================================================
 print("\n--- phénologie : degrés-jours et avancement de stade ---")
 # ======================================================================
 
@@ -767,6 +868,121 @@ check(phenology.days_to_harvest("apple", None, _date(2026, 6, 1)) is None,
       "sans date de floraison : pas d'estimation")
 check(phenology.days_to_harvest("apple", _date(2025, 1, 1), _date(2026, 6, 1)) == 0,
       "récolte dépassée : borné à 0, jamais négatif")
+
+# ======================================================================
+print("\n--- fructification : après la floraison, le temps écoulé ---")
+# ======================================================================
+
+_bloom = _date(2026, 4, 20)
+
+
+def _after(days):
+    return _bloom + timedelta(days=days)
+
+
+check(phenology.fruit_stage("apple", _bloom, _after(10)) is None,
+      "dix jours après la floraison : les fruits ne sont pas encore noués")
+check(phenology.fruit_stage("apple", _bloom, _after(14)) == crops.FRUIT_SET,
+      "quinze jours après : jeunes fruits")
+check(phenology.fruit_stage("apple", _bloom, _after(72)) == crops.FRUIT_GROWTH,
+      "en été : fruits en croissance")
+check(phenology.fruit_stage("apple", _bloom, _after(124)) == crops.RIPENING,
+      "aux 85 % de la durée : maturation")
+check(phenology.fruit_stage("apple", _bloom, _after(145)) == crops.HARVEST,
+      "au terme de la durée floraison → récolte : récolte")
+check(phenology.fruit_stage("apple", _bloom, _after(400)) == crops.HARVEST,
+      "« après récolte » ne s'applique jamais tout seul")
+check(phenology.fruit_stage("apple", None, _after(72)) is None,
+      "sans date de floraison : pas de fructification")
+check(phenology.fruit_stage("vine", _bloom, _after(72)) is None,
+      "vigne : la floraison n'est pas suivie")
+
+for _crop in ("apple", "pear", "apricot", "plum", "peach", "sweet_cherry"):
+    _starts = [phenology.fruit_stage_start(_crop, stage)
+               for stage in phenology.AUTO_FRUIT_STAGES]
+    check(_starts == sorted(set(_starts)),
+          f"{_crop} : les stades de fructification se suivent sans se chevaucher")
+    check(crops.stage_options(_crop)[-5:] == crops.FRUIT_STAGES,
+          f"{_crop} : la liste des stades va jusqu'à l'après-récolte")
+    check(crops.thresholds(_crop, crops.HARVEST)
+          == list(crops.CROPS[_crop].stages.values())[-6],
+          f"{_crop} : fruits sur l'arbre, les seuils de gel restent ceux du jeune fruit")
+    check(crops.thresholds(_crop, crops.POST_HARVEST)
+          == list(crops.CROPS[_crop].stages.values())[1],
+          f"{_crop} : après récolte, les seuils sont ceux du bois non endurci")
+
+check(phenology.propose_fruit_stage("apple", "full_bloom", _bloom, _after(72))
+      == crops.FRUIT_GROWTH,
+      "un arbre resté à la floraison passe aux fruits en croissance")
+check(phenology.propose_fruit_stage("apple", crops.FRUIT_GROWTH, _bloom, _after(72)) is None,
+      "aucun changement si le stade est déjà le bon")
+check(phenology.propose_fruit_stage("apple", crops.RIPENING, _bloom, _after(72)) is None,
+      "un stade choisi en avance n'est pas ramené en arrière")
+check(phenology.propose_fruit_stage("apple", crops.POST_HARVEST, _bloom, _after(300)) is None,
+      "« après récolte » est un stade final")
+check(phenology.propose_advance("apple", crops.FRUIT_GROWTH, 5000) is None,
+      "les degrés-jours ne ramènent pas un arbre en fruits à la floraison")
+
+check(not phenology.is_before_bloom("apple", crops.FRUIT_GROWTH),
+      "un arbre en fruits a fleuri")
+check(phenology.reached_bloom("apple", "full_bloom")
+      and phenology.reached_bloom("apple", crops.HARVEST)
+      and not phenology.reached_bloom("apple", "first_pink")
+      and not phenology.reached_bloom("apple", crops.DORMANT),
+      "la floraison est acquise à partir du début floraison")
+check(not phenology.reached_bloom("vine", "full_leaf")
+      and not phenology.reached_bloom("tender_annual", "growing"),
+      "vigne et potager : pas de date de floraison à tenir")
+
+# Une correction manuelle recale le calendrier de la fructification.
+_now_fruit = datetime(2026, 7, 1, 10, 0)
+_kept = datetime(2026, 4, 20, 8, 0)
+_ref = phenology.bloom_reference("apple", crops.RIPENING, _now_fruit, None)
+check(phenology.fruit_stage("apple", _ref, _now_fruit.date()) == crops.RIPENING,
+      "choisir « maturation » recale la floraison : le stade commence maintenant")
+check(phenology.days_to_harvest("apple", _ref, _now_fruit.date()) == 145 - 124,
+      "et l'estimation de récolte suit")
+check(phenology.fruit_stage("apple", _ref, _now_fruit.date() + timedelta(days=21))
+      == crops.HARVEST,
+      "la suite se compte à partir du stade choisi")
+check(phenology.bloom_reference("apple", crops.FRUIT_GROWTH, _now_fruit, _kept) == _kept,
+      "une date de floraison déjà cohérente avec le stade choisi n'est pas touchée")
+check(phenology.bloom_reference("apple", crops.FRUIT_SET, _now_fruit, _kept)
+      == _now_fruit - timedelta(days=14),
+      "revenir aux jeunes fruits recale aussi la date")
+check(phenology.bloom_reference("apple", "green_tip", _now_fruit, _kept) is None,
+      "revenir avant la floraison efface sa date")
+check(phenology.bloom_reference("apple", "full_bloom", _now_fruit, _kept) == _now_fruit,
+      "revenir à la floraison la date d'aujourd'hui")
+check(phenology.bloom_reference("apple", "full_bloom", _now_fruit,
+                                _now_fruit - timedelta(days=3))
+      == _now_fruit - timedelta(days=3),
+      "floraison en cours : la date déjà notée reste")
+check(phenology.bloom_reference("apple", crops.POST_HARVEST, _now_fruit, _kept) == _kept,
+      "déclarer la récolte faite ne change pas la date de floraison")
+check(phenology.bloom_reference("vine", "full_leaf", _now_fruit, None) is None,
+      "vigne : aucune date de floraison n'est inventée")
+
+check(phenology.next_fruit_stage("apple", "full_bloom", _kept, _after(5))
+      == (crops.FRUIT_SET, 9),
+      "en fleurs : jeunes fruits dans neuf jours")
+check(phenology.next_fruit_stage("apple", crops.FRUIT_GROWTH, _kept, _after(72))
+      == (crops.RIPENING, 124 - 72),
+      "fruits en croissance : la maturation s'annonce en jours")
+check(phenology.next_fruit_stage("apple", crops.HARVEST, _kept, _after(150)) is None,
+      "à la récolte : rien n'est annoncé, la suite se déclare")
+check(phenology.next_fruit_stage("apple", "green_tip", _kept, _after(5)) is None
+      and phenology.next_fruit_stage("vine", "full_leaf", _kept, _after(5)) is None,
+      "avant la floraison, ou sans floraison suivie : rien à annoncer en jours")
+
+check(phenology.correction_shift("apple", crops.FRUIT_GROWTH, 300.0) == 200.0,
+      "arbre déclaré en fruits : le cumul est relevé au dernier seuil")
+check(phenology.correction_shift("apple", crops.FRUIT_GROWTH, 900.0) == 0.0,
+      "et laissé tel quel s'il l'avait déjà dépassé")
+
+check(phenology.stage_for_gdd("vine", 600) == "full_leaf"
+      and phenology.next_stage_threshold("vine", "shoots_10cm") == ("full_leaf", 550),
+      "vigne : la pleine végétation suit les rameaux de 10 cm")
 
 # ======================================================================
 print("\n--- multi-arbres : modèles pertinents par espèce ---")
@@ -882,6 +1098,16 @@ for _lang, _data in sorted(_LANGS.items()):
     for _key in ("frost_risk", "late_blight_risk", "powdery_mildew_risk"):
         check(set(_RISK_LEVELS) <= set(_sensor.get(_key, {}).get("state", {})),
               f"{_lang} : niveaux de risque traduits pour {_key}")
+
+    check(bool(_ent.get("calendar", {}).get("treatments", {}).get("name")),
+          f"{_lang} : le calendrier des traitements a un nom traduit")
+    for _reason in (treatments.END_EXPIRED, treatments.END_WASHED_OFF,
+                    treatments.END_REPLACED, treatments.END_CLEARED,
+                    treatments.END_SEASON):
+        check(f"calendar_end_{_reason}" in _data.get("common", {}),
+              f"{_lang} : la fin « {_reason} » d'un traitement a son texte")
+    check("treatment_in_future" in _data.get("exceptions", {}),
+          f"{_lang} : le refus d'un traitement daté dans l'avenir est traduit")
 
     # Un nom manquant afficherait la clé technique dans l'interface.
     for _key in (

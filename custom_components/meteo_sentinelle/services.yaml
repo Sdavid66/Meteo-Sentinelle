@@ -11,6 +11,8 @@ log_treatment:
     lessivage par la pluie, et programme le rappel correspondant : la
     veille de la fin de protection, puis à son terme ou si la pluie l'a
     lessivée. Renseignez les deux valeurs d'après l'étiquette du produit.
+    Chaque application reste dans le journal des traitements, visible dans
+    le calendrier.
   fields:
     target:
       name: Cible
@@ -65,6 +67,14 @@ log_treatment:
           step: 1
           unit_of_measurement: mm
           mode: box
+    date:
+      name: Date
+      description: >-
+        Jour de l'application, pour un traitement déclaré après coup. Par
+        défaut aujourd'hui. La pluie tombée depuis est relue dans
+        l'historique, sur dix jours au plus.
+      selector:
+        date:
 
 clear_treatment:
   name: Effacer un traitement

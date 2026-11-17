@@ -99,14 +99,6 @@ const STRINGS = {
       third_flight: "3e vol",
       third_generation: "Larves G3",
     },
-    growth: {
-      fruitlet: "Jeunes fruits",
-      fruit: "Fruits en croissance",
-      ripe: "Fruits à maturité",
-      harvest: "Récolte",
-      autumn: "Après récolte",
-      leafy: "Pleine végétation",
-    },
     harvestIn: "récolte dans ~{days} j",
     all_good: "Tout va bien au verger",
     all_good_text: "Aucun risque à signaler pour le moment.",
@@ -160,6 +152,7 @@ const STRINGS = {
     next_stage: "Ensuite : {stage}, {when}.",
     observed_stage: "Stade observé",
     observed_help: "Votre arbre n'en est pas là ? Choisissez le bon stade : le suivi repart de là.",
+    harvest_help: "Récolte terminée ? Choisissez « Après récolte » : il n'y aura plus de fruits à protéger du gel.",
     frost_gauge: "Gel : minimum prévu et seuils",
     gauge_min: "Prévu {temp} °C",
     gauge_t10: "10 % de dégâts",
@@ -181,12 +174,16 @@ const STRINGS = {
     ended_expired: "Protection terminée le {date}.",
     ended_washed: "Traitement lessivé par la pluie ({rain} mm).",
     form_product: "Produit (facultatif)",
+    form_date: "Appliqué le",
     form_days: "Protège pendant (jours)",
     form_mm: "Lessivé après (mm de pluie)",
     form_all: "Appliquer aux {count} arbres concernés",
     form_hint: "Durées à lire sur l'étiquette du produit. Un rappel arrive la veille, puis à la fin de la protection.",
     form_save: "Enregistrer",
     form_cancel: "Annuler",
+    history: "Traitements précédents",
+    history_days: "{days} j",
+    history_washed: "lessivé",
     waiting_biofix: "En attente de la première observation au piège.",
     estimated_biofix: "Départ estimé le {date}, d'après la floraison.",
     declared_biofix: "Départ observé le {date}.",
@@ -259,14 +256,6 @@ const STRINGS = {
       third_flight: "3rd flight",
       third_generation: "3rd gen. larvae",
     },
-    growth: {
-      fruitlet: "Young fruit",
-      fruit: "Fruit growing",
-      ripe: "Fruit ripening",
-      harvest: "Harvest",
-      autumn: "After harvest",
-      leafy: "Full leaf",
-    },
     harvestIn: "harvest in ~{days} d",
     all_good: "All is well in the orchard",
     all_good_text: "No risk to report right now.",
@@ -320,6 +309,7 @@ const STRINGS = {
     next_stage: "Next: {stage}, {when}.",
     observed_stage: "Observed stage",
     observed_help: "Tree not there yet? Pick the right stage: tracking resumes from there.",
+    harvest_help: "Harvest done? Pick “After harvest”: there will be no fruit left to protect from frost.",
     frost_gauge: "Frost: forecast low and thresholds",
     gauge_min: "Forecast {temp} °C",
     gauge_t10: "10% damage",
@@ -341,12 +331,16 @@ const STRINGS = {
     ended_expired: "Protection ended on {date}.",
     ended_washed: "Treatment washed off by rain ({rain} mm).",
     form_product: "Product (optional)",
+    form_date: "Applied on",
     form_days: "Protects for (days)",
     form_mm: "Washed off after (mm of rain)",
     form_all: "Apply to the {count} trees concerned",
     form_hint: "Read the durations on the product label. A reminder comes the day before, then when protection ends.",
     form_save: "Save",
     form_cancel: "Cancel",
+    history: "Earlier treatments",
+    history_days: "{days} d",
+    history_washed: "washed off",
     waiting_biofix: "Waiting for the first trap observation.",
     estimated_biofix: "Start estimated on {date}, from bloom.",
     declared_biofix: "Start observed on {date}.",
@@ -448,11 +442,12 @@ function formatTime(hass, date) {
 function formatDate(hass, value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat(language(hass), {
-    timeZone: zone(hass),
-    day: "numeric",
-    month: "short",
-  }).format(date);
+  const options = { timeZone: zone(hass), day: "numeric", month: "short" };
+  // Une date d'une autre année serait ambiguë sans elle.
+  if (dayKey(hass, date).slice(0, 4) !== dayKey(hass, new Date()).slice(0, 4)) {
+    options.year = "numeric";
+  }
+  return new Intl.DateTimeFormat(language(hass), options).format(date);
 }
 
 function hourOf(hass, date) {
@@ -577,6 +572,7 @@ const STAGE_PHASES = {
   tight_cluster: "leaf",
   first_leaves: "leaf",
   shoots_10cm: "leaf",
+  full_leaf: "canopy",
   first_pink: "flowerbud",
   full_pink: "flowerbud",
   pink: "flowerbud",
@@ -589,22 +585,33 @@ const STAGE_PHASES = {
   post_bloom: "fruitlet",
   in_the_shuck: "fruitlet",
   shuck_split: "fruitlet",
+  fruit_set: "fruitlet",
+  fruit_growth: "fruit",
+  ripening: "ripe",
+  harvest: "ripe",
+  post_harvest: "autumn",
   growing: "plant",
   emerged: "plant",
 };
 
-//: Après le dernier stade suivi, la croissance est estimée d'après la chaleur
-//: reçue. Cette valeur ne sert qu'à faire avancer le dessin.
+//: Maturité prêtée aux fruits dessinés quand la date de floraison manque.
+const FRUIT_RIPENESS = {
+  fruit_set: 0.1,
+  fruit_growth: 0.5,
+  ripening: 0.9,
+  harvest: 1,
+  post_harvest: 1,
+};
+
+//: En pleine végétation, la vigne avance d'après la chaleur reçue. Cette
+//: valeur ne sert qu'à faire mûrir le dessin.
 const VISUAL_SEASON_GDD = 1500;
+const VISUAL_SEASON_LEAD = 150;
 
 function computeGrowth(stageKey, attributes) {
   const phase = STAGE_PHASES[stageKey] || "plant";
-  const path = attributes.stages || [];
   const gdd =
     (attributes.gdd_total || 0) + (attributes.gdd_offset || 0) + (attributes.gdd_shift || 0);
-  const ranked = path.filter((step) => isNumber(step.gdd));
-  const lastGdd = ranked.length ? ranked[ranked.length - 1].gdd : null;
-  const isLast = ranked.length && ranked[ranked.length - 1].key === stageKey;
 
   // Annuelles : un seul stade, la plante pousse avec la chaleur.
   if (phase === "plant") {
@@ -612,26 +619,29 @@ function computeGrowth(stageKey, attributes) {
   }
   if (phase === "rest") return { phase, ripeness: 0 };
 
-  // Floraison passée : la suite se lit sur la date de floraison.
-  const remaining = attributes.days_to_harvest;
-  const total = attributes.bloom_to_harvest_days;
-  if (attributes.bloom_date && isNumber(remaining) && isNumber(total) && total > 0) {
-    const elapsed = (Date.now() - new Date(attributes.bloom_date).getTime()) / 86400000;
-    if (elapsed > total + 21) return { phase: "autumn", ripeness: 1, growth: "autumn" };
-    if (remaining <= 0) return { phase: "ripe", ripeness: 1, growth: "harvest" };
-    const ratio = elapsed / total;
-    if (elapsed < 10 && (phase === "bloom" || phase === "flowerbud")) return { phase: "bloom", ripeness: 0 };
-    if (ratio < 0.2) return { phase: "fruitlet", ripeness: ratio, growth: "fruitlet" };
-    if (ratio < 0.85) return { phase: "fruit", ripeness: ratio, growth: "fruit", remaining };
-    return { phase: "ripe", ripeness: ratio, growth: "ripe", remaining };
+  // Fructification : le stade dit où en est l'arbre, la date de floraison
+  // affine la taille et la couleur des fruits.
+  if (stageKey in FRUIT_RIPENESS) {
+    const total = attributes.bloom_to_harvest_days;
+    const remaining = attributes.days_to_harvest;
+    let ripeness = FRUIT_RIPENESS[stageKey];
+    if (stageKey !== "post_harvest" && attributes.bloom_date && isNumber(total) && total > 0) {
+      const elapsed = (Date.now() - new Date(attributes.bloom_date).getTime()) / 86400000;
+      ripeness = clamp(elapsed / total, 0, 1);
+    }
+    const counting =
+      (stageKey === "fruit_growth" || stageKey === "ripening") &&
+      isNumber(remaining) &&
+      remaining > 0;
+    return { phase, ripeness, remaining: counting ? remaining : null };
   }
 
-  // Sans date de floraison (vigne, stade saisi à la main) : le dernier stade
-  // suivi est dépassé depuis longtemps si la chaleur a continué d'arriver.
-  if (isLast && isNumber(lastGdd) && gdd - lastGdd > 150) {
-    const ratio = clamp((gdd - lastGdd) / VISUAL_SEASON_GDD, 0, 1);
-    if (ratio > 0.8) return { phase: "ripe", ripeness: ratio, growth: "leafy" };
-    return { phase: ratio > 0.25 ? "fruit" : "fruitlet", ripeness: ratio, growth: "leafy" };
+  if (phase === "canopy") {
+    const step = (attributes.stages || []).find((item) => item.key === stageKey);
+    const from = (step && isNumber(step.gdd) ? step.gdd : 550) - VISUAL_SEASON_LEAD;
+    const ratio = clamp((gdd - from) / VISUAL_SEASON_GDD, 0, 1);
+    if (ratio > 0.8) return { phase: "ripe", ripeness: ratio };
+    return { phase: ratio > 0.25 ? "fruit" : "fruitlet", ripeness: ratio };
   }
   return { phase, ripeness: 0 };
 }
@@ -710,12 +720,18 @@ function buildView(hass, config, ids) {
       })
       .sort((a, b) => rank(b.level) - rank(a.level));
 
-    const label = growth.growth
-      ? s.growth[growth.growth]
-      : stageLabel(hass, entry.stage, stageKey) || s.crops[attributes.crop] || "";
+    const label = stageLabel(hass, entry.stage, stageKey) || s.crops[attributes.crop] || "";
     const speed = dailySpeed(gddState, GDD_BASE);
     const next = stageAttributes.next_stage_key;
     const toNext = stageAttributes.gdd_to_next_stage;
+    // Après la floraison, le stade suivant s'annonce en jours.
+    const daysToNext = stageAttributes.days_to_next_stage;
+    let nextWhen = null;
+    if (isNumber(toNext)) {
+      nextWhen = beforeSeason ? s.when_spring : formatDelay(hass, s, toNext, speed);
+    } else if (isNumber(daysToNext)) {
+      nextWhen = daysToNext <= 1 ? s.when_days_one : fill(s.when_days, { days: daysToNext });
+    }
 
     return {
       key: entry.key,
@@ -733,13 +749,14 @@ function buildView(hass, config, ids) {
       t10: stageAttributes.t10,
       gdd: stageAttributes.gdd_total,
       next:
-        next && isNumber(toNext)
+        next && nextWhen !== null
           ? {
               key: next,
               label: stageLabel(hass, entry.stage, next),
-              dd: toNext,
+              dd: isNumber(toNext) ? toNext : null,
+              days: isNumber(toNext) ? null : daysToNext,
               speed,
-              when: beforeSeason ? s.when_spring : formatDelay(hass, s, toNext, speed),
+              when: nextWhen,
             }
           : null,
       risks,
@@ -912,6 +929,7 @@ function buildCalm(hass, s, trees, gddState) {
         tree: tree.title,
         what: tree.next.label.charAt(0).toLowerCase() + tree.next.label.slice(1),
         dd: tree.next.dd,
+        days: tree.next.days,
         speed: tree.next.speed,
         when: tree.next.when,
       });
@@ -936,12 +954,13 @@ function buildCalm(hass, s, trees, gddState) {
     }
   }
   const soonest = candidates
-    .map((item) =>
-      Object.assign({}, item, {
+    .map((item) => {
+      if (isNumber(item.days)) return item;
+      return Object.assign({}, item, {
         days: isNumber(item.speed) && item.speed >= 0.5 ? item.dd / item.speed : Infinity,
-      })
-    )
-    .sort((a, b) => a.days - b.days || a.dd - b.dd)[0];
+      });
+    })
+    .sort((a, b) => a.days - b.days || (a.dd || 0) - (b.dd || 0))[0];
 
   const allResting = trees.every((tree) => tree.resting);
   if (allResting) {
@@ -1668,15 +1687,7 @@ function renderPath(hass, s, tree) {
     label: stageLabel(hass, tree.stageState, step.key),
     t10: step.t10,
   }));
-  const hasFruit = isNumber(attrs(tree.stageState).bloom_to_harvest_days);
-  if (hasFruit) {
-    const lastT10 = steps[steps.length - 1].t10;
-    steps.push({ key: "__fruit", label: s.growth.fruit, t10: lastT10 });
-    steps.push({ key: "__harvest", label: s.growth.harvest, t10: lastT10 });
-  }
-  let current = steps.findIndex((step) => step.key === tree.stageKey);
-  if (hasFruit && ["fruit"].includes(tree.growth.phase)) current = steps.length - 2;
-  if (hasFruit && ["ripe", "autumn"].includes(tree.growth.phase)) current = steps.length - 1;
+  const current = steps.findIndex((step) => step.key === tree.stageKey);
 
   const bars = steps
     .map((step, index) => {
@@ -1690,7 +1701,7 @@ function renderPath(hass, s, tree) {
   if (isNumber(tree.t10)) {
     here.push(fill(s.stage_here, { t10: formatNumber(hass, tree.t10) }));
   }
-  if (tree.next && !tree.growth.growth) {
+  if (tree.next) {
     here.push(
       fill(s.next_stage, {
         stage: tree.next.label,
@@ -1712,10 +1723,12 @@ function renderPath(hass, s, tree) {
         `<option value="${esc(step.key)}" ${step.key === tree.stageKey ? "selected" : ""}>${esc(stageLabel(hass, tree.stageState, step.key))}</option>`
     )
     .join("");
+  // « Après récolte » ne s'applique jamais seul : c'est ici qu'on le déclare.
+  const fruitsDue = tree.stageKey === "ripening" || tree.stageKey === "harvest";
   const picker = options
     ? `<label class="picker"><span class="section-title">${esc(s.observed_stage)}</span>
       <select data-stage data-sub="${esc(tree.subentryId)}">${options}</select></label>
-    <div class="muted small">${esc(s.observed_help)}</div>`
+    <div class="muted small">${esc(fruitsDue ? s.harvest_help : s.observed_help)}</div>`
     : "";
 
   return `<section class="section">
@@ -1833,8 +1846,12 @@ function renderTreatmentForm(s, view, risk, form) {
       ? `<label class="check"><input type="checkbox" data-field="all" ${form.all ? "checked" : ""}><span>${esc(fill(s.form_all, { count: concerned }))}</span></label>`
       : "";
   return `<div class="form">
-    <label class="field"><span>${esc(s.form_product)}</span>
-      <input type="text" data-field="product" maxlength="80" value="${esc(form.product)}"></label>
+    <div class="field-row wide">
+      <label class="field"><span>${esc(s.form_product)}</span>
+        <input type="text" data-field="product" maxlength="80" value="${esc(form.product)}"></label>
+      <label class="field"><span>${esc(s.form_date)}</span>
+        <input type="date" data-field="date" max="${esc(form.today)}" value="${esc(form.date)}"></label>
+    </div>
     <div class="field-row">
       <label class="field"><span>${esc(s.form_days)}</span>
         <input type="number" inputmode="decimal" min="0.5" max="90" step="0.5" data-field="days" value="${esc(form.days)}"></label>
@@ -1850,11 +1867,33 @@ function renderTreatmentForm(s, view, risk, form) {
   </div>`;
 }
 
+/** Applications précédentes contre ce risque, tirées du journal. */
+function renderHistory(hass, s, risk) {
+  const items = (risk.attributes.treatments || []).slice(0, 3);
+  if (!items.length) return "";
+  const rows = items
+    .map((item) => {
+      const bits = [formatDate(hass, item.applied_at)];
+      if (item.product) bits.push(item.product);
+      if (isNumber(item.residual_days)) {
+        bits.push(fill(s.history_days, { days: formatNumber(hass, item.residual_days) }));
+      }
+      if (item.end_reason === "washed_off") bits.push(s.history_washed);
+      return `<li>${esc(bits.join(" · "))}</li>`;
+    })
+    .join("");
+  return `<div class="history"><div class="muted small">${esc(s.history)}</div><ul>${rows}</ul></div>`;
+}
+
 /** Où en est le traitement de ce risque, et le geste pour le déclarer. */
 function renderTreatment(hass, s, view, tree, risk, form) {
   if (form && form.key === `${tree.subentryId}|${risk.model}`) {
     return renderTreatmentForm(s, view, risk, form);
   }
+  return renderProtection(hass, s, tree, risk) + renderHistory(hass, s, risk);
+}
+
+function renderProtection(hass, s, tree, risk) {
   const target = `data-model="${risk.model}" data-sub="${esc(tree.subentryId)}"`;
   const open = (label) =>
     `<button class="btn" data-act="form" ${target}>${icon("spray", 14)}${esc(label)}</button>`;
@@ -2172,9 +2211,13 @@ const CARD_STYLE = `
   .field > span { display: block; margin-bottom: 4px; font-size: 12px; color: var(--secondary-text-color); }
   .field input { display: block; width: 100%; height: 38px; padding: 0 10px; box-sizing: border-box; font: inherit; font-size: 14px; color: var(--primary-text-color); background: var(--ha-card-background, var(--card-background-color, #fff)); border: 1px solid var(--divider-color, rgba(127,127,127,.4)); border-radius: 10px; }
   ha-card.dark .field input { color-scheme: dark; }
-  .field-row { display: flex; align-items: flex-end; margin-right: -8px; }
-  .field-row > .field { flex: 1 1 0; min-width: 0; margin-right: 8px; }
+  .field-row { display: flex; flex-wrap: wrap; align-items: flex-end; margin-right: -8px; margin-bottom: -7px; }
+  .field-row > .field { flex: 1 1 96px; min-width: 0; margin-right: 8px; margin-bottom: 7px; }
+  .field-row.wide > .field { flex: 1 1 150px; }
+  .field input[type="date"] { min-width: 0; -webkit-appearance: none; appearance: none; }
   .check { display: flex; align-items: center; font-size: 13px; }
+  .history { margin-top: 8px; }
+  .history ul { margin: 2px 0 0; padding: 0; list-style: none; font-size: 12px; line-height: 1.5; color: var(--secondary-text-color); }
   .check input { flex: none; width: 18px; height: 18px; margin: 0 8px 0 0; }
   .gauge { position: relative; padding-top: 17px; }
   .gauge > * + * { margin-top: 3px; }
@@ -2425,10 +2468,15 @@ class MeteoSentinelleCard extends HTMLElement {
     // Renouveler reprend ce qui avait été déclaré. Sinon, l'intervalle que
     // le modèle conseille, ou les valeurs par défaut de l'intégration.
     const last = risk.protection || {};
+    const today = dayKey(this._hass, new Date());
     this._form = {
       key: `${sub}|${model}`,
       sub,
       model,
+      today,
+      // Aujourd'hui par défaut ; une date passée pour un traitement déclaré
+      // après coup.
+      date: today,
       product: last.product || "",
       days: orElse(last.residual_days, risk.attributes.spray_interval_days || 7),
       mm: orElse(last.rainfast_mm, 20),
@@ -2449,13 +2497,19 @@ class MeteoSentinelleCard extends HTMLElement {
       .map((tree) => tree.subentryId);
     this._form = null;
     this._update(true);
-    this._call("log_treatment", {
+    const data = {
       target: form.model,
       tree: form.all && trees.length ? trees : form.sub,
       product: String(form.product || "").trim().slice(0, 80),
       residual_days: clamp(isNumber(days) && days > 0 ? days : 7, 0.5, 90),
       rainfast_mm: clamp(isNumber(mm) && mm >= 0 ? mm : 20, 0, 500),
-    });
+    };
+    // Sans date, l'intégration retient l'instant de la déclaration : c'est
+    // plus juste que « aujourd'hui à midi ».
+    if (/^\d{4}-\d{2}-\d{2}$/.test(form.date || "") && form.date !== form.today) {
+      data.date = form.date;
+    }
+    this._call("log_treatment", data);
   }
 
   _onChange(event) {
